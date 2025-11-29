@@ -1,0 +1,52 @@
+# NetNewsWire Reference App
+
+## Location
+The NetNewsWire iOS/macOS app source code is available locally at:
+```
+../references/NetNewsWire/
+```
+
+This is the official open-source RSS reader from Ranchero Software (https://github.com/Ranchero-Software/NetNewsWire).
+
+## Why Use It
+NetNewsWire is a mature, well-architected feed reader with 9.3k+ GitHub stars and MIT license. Use it as a reference for:
+- Feed parsing (RSS, Atom, JSON Feed) - similar to podcast feed parsing
+- SwiftUI + AppKit/UIKit patterns for iOS and macOS
+- Modular Swift Package architecture
+- Background refresh and sync
+- Widget implementation
+- iCloud sync patterns
+- Clean, maintainable Swift code style
+
+## Key Directories to Reference
+
+| Directory | Purpose |
+|-----------|---------|
+| `iOS/` | iOS-specific app code |
+| `Mac/` | macOS-specific app code |
+| `Shared/` | Cross-platform shared code |
+| `Modules/` | Swift packages for core functionality |
+| `Widget/` | Home screen widget implementation |
+| `Intents/` | Siri shortcuts integration |
+| `Tests/` | Unit and integration tests |
+| `Technotes/` | Architecture documentation |
+
+## Relevant for Outcast
+NetNewsWire is particularly useful for:
+- **Feed Parsing**: RSS/Atom parsing is very similar to podcast RSS feeds
+- **Refresh Logic**: Background fetch and update patterns
+- **Data Models**: How to structure feed items, subscriptions
+- **Sync**: iCloud and account sync patterns
+- **Performance**: Efficient list rendering with large datasets
+
+## How to Use as Reference
+- Search with `grep` or `codebase_search` scoped to `../references/NetNewsWire/`
+- Check the `Technotes/` folder for architecture decisions
+- Look at `Modules/` for clean separation of concerns
+- Their RSS parsing can inform podcast feed parsing
+
+## Important Notes
+- NetNewsWire targets both iOS and macOS - focus on `iOS/` for Outcast
+- MIT licensed - more permissive than Pocket Casts (MPL-2.0)
+- Very clean, readable Swift code - good style reference
+- The reference is excluded from `.cursorignore` to avoid polluting context
