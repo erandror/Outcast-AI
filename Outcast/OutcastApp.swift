@@ -12,7 +12,8 @@ import SwiftData
 struct OutcastApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Episode.self,
+            Podcast.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
