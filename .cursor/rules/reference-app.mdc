@@ -1,0 +1,40 @@
+# Pocket Casts Reference App
+
+## Location
+The Pocket Casts iOS app source code is available locally at:
+```
+../references/pocket-casts-ios/
+```
+
+This is the official open-source iOS app from Automattic (https://github.com/Automattic/pocket-casts-ios).
+
+## Why Use It
+Pocket Casts is a mature, production-quality podcast app with 1.7k+ GitHub stars and 15,000+ commits. Use it as a reference for:
+- Audio playback patterns and AVFoundation usage
+- Podcast feed parsing and data models
+- Background audio and Now Playing integration
+- SwiftUI + UIKit hybrid patterns
+- Modular architecture for iOS apps
+
+## Key Directories to Reference
+
+| Directory | Purpose |
+|-----------|---------|
+| `podcasts/` | Main iOS app source code |
+| `Modules/DataModel/` | Core data models and persistence |
+| `Modules/Server/` | API and networking layer |
+| `Modules/Utils/` | Shared utilities |
+| `Pocket Casts Watch App/` | watchOS companion app |
+| `WidgetExtension/` | Home screen widgets |
+| `PodcastsIntents/` | Siri shortcuts integration |
+
+## How to Use as Reference
+When implementing a feature in Outcast, search the Pocket Casts codebase for similar functionality:
+- Use `grep` or `codebase_search` scoped to `../references/pocket-casts-ios/`
+- Look at their patterns, then adapt (don't copy) for our SwiftUI-first approach
+- Their app uses both UIKit and SwiftUI; prefer SwiftUI patterns for Outcast
+
+## Important Notes
+- The reference code is NOT part of the Outcast project
+- Do not copy code directly - use it for learning patterns and architecture
+- The reference is excluded from `.cursorignore` to avoid polluting context
