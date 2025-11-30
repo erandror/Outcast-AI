@@ -12,6 +12,7 @@ struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isPlaying = false
     @State private var currentTime: TimeInterval = 0
+    @State private var showingPodcastDetail = false
     
     private var duration: TimeInterval {
         episode.episode.duration ?? 0
@@ -67,9 +68,13 @@ struct PlayerView: View {
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                     
-                    Text(episode.podcast.title)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.7))
+                    Button {
+                        showingPodcastDetail = true
+                    } label: {
+                        Text(episode.podcast.title)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
                 }
                 .padding(.horizontal, 32)
                 
@@ -130,6 +135,11 @@ struct PlayerView: View {
             // Save playback position
             Task {
                 await savePlaybackPosition()
+            }
+        }
+        .sheet(isPresented: $showingPodcastDetail) {
+            NavigationStack {
+                ShowView(podcast: episode.podcast)
             }
         }
     }
