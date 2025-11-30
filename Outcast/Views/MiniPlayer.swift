@@ -66,6 +66,7 @@ struct MiniPlayer: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+            .padding(.bottom, 8)
             .background(
                 Color.black.opacity(0.95)
                     .overlay(
@@ -75,6 +76,7 @@ struct MiniPlayer: View {
                         alignment: .top
                     )
             )
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }

@@ -21,7 +21,8 @@ struct ShowView: View {
     var body: some View {
         ZStack {
             // Stark black background
-            Color.black.ignoresSafeArea()
+            Color.black
+                .ignoresSafeArea()
             
             ScrollView {
                 VStack(spacing: 0) {
@@ -94,6 +95,7 @@ struct ShowView: View {
         }
         .toolbarBackground(Color.black, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .task {
             await loadEpisodes()
         }

@@ -15,9 +15,9 @@ struct DownloadButton: View {
     var body: some View {
         Button(action: handleTap) {
             downloadIcon
-                .font(.system(size: 20))
+                .font(.system(size: 18))
                 .foregroundColor(.white)
-                .frame(width: 44, height: 44)
+                .frame(width: 40, height: 40)
         }
         .disabled(isProcessing)
     }
@@ -87,6 +87,6 @@ struct DownloadProgressRing: View {
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.3), value: progress)
         }
-        .frame(width: 20, height: 20)
+        .frame(width: 18, height: 18)
     }
 }

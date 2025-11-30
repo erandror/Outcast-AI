@@ -25,7 +25,8 @@ struct ContentView: View {
         NavigationStack {
             ZStack {
                 // Stark black background
-                Color.black.ignoresSafeArea()
+                Color.black
+                    .ignoresSafeArea()
                 
                 ScrollView {
                     VStack(spacing: 0) {
@@ -72,6 +73,9 @@ struct ContentView: View {
                 .refreshable {
                     await refreshFeeds()
                 }
+                .safeAreaInset(edge: .bottom) {
+                    MiniPlayer()
+                }
                 
                 // Loading overlay
                 if isRefreshing && episodes.isEmpty {
@@ -79,14 +83,8 @@ struct ContentView: View {
                         .tint(.white)
                         .scaleEffect(1.5)
                 }
-                
-                // Mini Player at bottom
-                VStack {
-                    Spacer()
-                    MiniPlayer()
-                }
             }
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .sheet(isPresented: $showDownloads) {
             NavigationStack {
@@ -159,8 +157,8 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 20)
-        .padding(.bottom, 24)
+        .padding(.top, 60)
+        .padding(.bottom, 16)
     }
     
     private var emptyStateView: some View {
