@@ -148,9 +148,9 @@ struct PlayerView: View {
             }
         }
         .task {
-            // Load episode into playback manager
+            // Load episode into playback manager and start playing
             do {
-                try await playbackManager.load(episode: episode.episode, autoPlay: false)
+                try await playbackManager.load(episode: episode.episode, autoPlay: true)
             } catch {
                 print("Failed to load episode: \(error)")
             }

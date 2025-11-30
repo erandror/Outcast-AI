@@ -14,6 +14,7 @@ struct EpisodeView: View {
     @State private var showPlayer = false
     @State private var showPodcastDetail = false
     @State private var playbackProgress: Double = 0
+    @ObservedObject private var playbackManager = PlaybackManager.shared
     
     var body: some View {
         ZStack {
