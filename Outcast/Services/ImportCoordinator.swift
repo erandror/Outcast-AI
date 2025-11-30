@@ -16,7 +16,7 @@ actor ImportCoordinator {
     static let shared = ImportCoordinator()
     
     /// Progress information for ongoing import
-    struct ImportProgress: Sendable {
+    struct ImportProgress: Sendable, Equatable {
         let total: Int
         var completed: Int
         var failed: Int
