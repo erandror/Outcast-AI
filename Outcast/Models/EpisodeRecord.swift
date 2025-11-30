@@ -51,6 +51,15 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
     var seasonNumber: Int?
     var episodeType: String?
     
+    // Extended metadata fields
+    var link: String?               // Episode webpage URL
+    var explicit: Bool?
+    var subtitle: String?
+    var author: String?             // Episode-specific author/guest
+    var contentHTML: String?        // Rich show notes (content:encoded)
+    var chaptersURL: String?        // podcast:chapters URL
+    var transcripts: String?        // JSON: [{"url": "...", "type": "text/vtt", "language": "en"}]
+    
     // Playback state
     var playedUpTo: TimeInterval
     var playingStatus: PlayingStatus
@@ -82,6 +91,13 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         episodeNumber: Int? = nil,
         seasonNumber: Int? = nil,
         episodeType: String? = nil,
+        link: String? = nil,
+        explicit: Bool? = nil,
+        subtitle: String? = nil,
+        author: String? = nil,
+        contentHTML: String? = nil,
+        chaptersURL: String? = nil,
+        transcripts: String? = nil,
         playedUpTo: TimeInterval = 0,
         playingStatus: PlayingStatus = .notPlayed,
         isDownloaded: Bool = false,
@@ -109,6 +125,13 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         self.episodeNumber = episodeNumber
         self.seasonNumber = seasonNumber
         self.episodeType = episodeType
+        self.link = link
+        self.explicit = explicit
+        self.subtitle = subtitle
+        self.author = author
+        self.contentHTML = contentHTML
+        self.chaptersURL = chaptersURL
+        self.transcripts = transcripts
         self.playedUpTo = playedUpTo
         self.playingStatus = playingStatus
         self.isDownloaded = isDownloaded

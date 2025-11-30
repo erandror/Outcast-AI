@@ -24,6 +24,19 @@ struct PodcastRecord: Identifiable, Codable, Sendable {
     var lastModified: String?
     var addedDate: Date
     var artworkColor: String?
+    var isFullyLoaded: Bool
+    
+    // Extended metadata fields
+    var language: String?
+    var showType: String?           // "episodic" | "serial"
+    var copyright: String?
+    var ownerName: String?
+    var ownerEmail: String?
+    var explicit: Bool?
+    var subtitle: String?
+    var fundingURL: String?
+    var htmlDescription: String?    // Rich HTML version
+    var categories: String?         // JSON array: ["Business", "Technology"]
     
     init(
         id: Int64? = nil,
@@ -39,7 +52,18 @@ struct PodcastRecord: Identifiable, Codable, Sendable {
         etag: String? = nil,
         lastModified: String? = nil,
         addedDate: Date = Date(),
-        artworkColor: String? = nil
+        artworkColor: String? = nil,
+        isFullyLoaded: Bool = true,
+        language: String? = nil,
+        showType: String? = nil,
+        copyright: String? = nil,
+        ownerName: String? = nil,
+        ownerEmail: String? = nil,
+        explicit: Bool? = nil,
+        subtitle: String? = nil,
+        fundingURL: String? = nil,
+        htmlDescription: String? = nil,
+        categories: String? = nil
     ) {
         self.id = id
         self.uuid = uuid
@@ -55,6 +79,17 @@ struct PodcastRecord: Identifiable, Codable, Sendable {
         self.lastModified = lastModified
         self.addedDate = addedDate
         self.artworkColor = artworkColor
+        self.isFullyLoaded = isFullyLoaded
+        self.language = language
+        self.showType = showType
+        self.copyright = copyright
+        self.ownerName = ownerName
+        self.ownerEmail = ownerEmail
+        self.explicit = explicit
+        self.subtitle = subtitle
+        self.fundingURL = fundingURL
+        self.htmlDescription = htmlDescription
+        self.categories = categories
     }
 }
 

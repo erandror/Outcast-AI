@@ -113,10 +113,10 @@ struct PlayerView: View {
                         
                         if translation < -threshold && hasNext {
                             // Swipe up - go to next
-                            goToNext()
+                            goToNext(screenHeight: geometry.size.height)
                         } else if translation > threshold && hasPrevious {
                             // Swipe down - go to previous
-                            goToPrevious()
+                            goToPrevious(screenHeight: geometry.size.height)
                         } else {
                             // Snap back to current
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -139,14 +139,14 @@ struct PlayerView: View {
         }
     }
     
-    private func goToNext() {
+    private func goToNext(screenHeight: CGFloat) {
         guard hasNext && !isAnimating else { return }
         
         isAnimating = true
         
         // Animate slide up to next episode
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-            dragOffset = -UIScreen.main.bounds.height
+            dragOffset = -screenHeight
         }
         
         // Update index and reset offset after animation completes
@@ -163,14 +163,14 @@ struct PlayerView: View {
         }
     }
     
-    private func goToPrevious() {
+    private func goToPrevious(screenHeight: CGFloat) {
         guard hasPrevious && !isAnimating else { return }
         
         isAnimating = true
         
         // Animate slide down to previous episode
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-            dragOffset = UIScreen.main.bounds.height
+            dragOffset = screenHeight
         }
         
         // Update index and reset offset after animation completes

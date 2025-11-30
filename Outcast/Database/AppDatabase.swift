@@ -136,6 +136,41 @@ final class AppDatabase: Sendable {
             try db.create(index: "episode_downloadStatus", on: "episode", columns: ["downloadStatus"])
         }
         
+        // Migration v3: Add extended metadata fields
+        migrator.registerMigration("v3_extended_metadata") { db in
+            // Add podcast extended metadata
+            try db.alter(table: "podcast") { t in
+                t.add(column: "language", .text)
+                t.add(column: "showType", .text)
+                t.add(column: "copyright", .text)
+                t.add(column: "ownerName", .text)
+                t.add(column: "ownerEmail", .text)
+                t.add(column: "explicit", .boolean)
+                t.add(column: "subtitle", .text)
+                t.add(column: "fundingURL", .text)
+                t.add(column: "htmlDescription", .text)
+                t.add(column: "categories", .text)  // JSON array
+            }
+            
+            // Add episode extended metadata
+            try db.alter(table: "episode") { t in
+                t.add(column: "link", .text)
+                t.add(column: "explicit", .boolean)
+                t.add(column: "subtitle", .text)
+                t.add(column: "author", .text)
+                t.add(column: "contentHTML", .text)
+                t.add(column: "chaptersURL", .text)
+                t.add(column: "transcripts", .text)  // JSON array
+            }
+        }
+        
+        // Migration v4: Add isFullyLoaded tracking for two-phase subscription
+        migrator.registerMigration("v4_fully_loaded") { db in
+            try db.alter(table: "podcast") { t in
+                t.add(column: "isFullyLoaded", .boolean).notNull().defaults(to: true)
+            }
+        }
+        
         return migrator
     }
 }

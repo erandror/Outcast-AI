@@ -9,6 +9,12 @@
 import Foundation
 import UIKit
 
+/// Result of parsing a podcast feed
+struct ParseResult: Sendable {
+    let podcast: ParsedPodcast
+    let hasMoreEpisodes: Bool
+}
+
 /// Represents a parsed podcast feed
 struct ParsedPodcast: Sendable {
     let title: String
@@ -17,6 +23,18 @@ struct ParsedPodcast: Sendable {
     let artworkURL: String?
     let homePageURL: String?
     let episodes: [ParsedEpisode]
+    
+    // Extended metadata
+    let language: String?
+    let showType: String?
+    let copyright: String?
+    let ownerName: String?
+    let ownerEmail: String?
+    let explicit: Bool?
+    let subtitle: String?
+    let fundingURL: String?
+    let htmlDescription: String?
+    let categories: String?  // JSON array
 }
 
 /// Represents a parsed podcast episode
@@ -33,6 +51,15 @@ struct ParsedEpisode: Sendable {
     let episodeNumber: Int?
     let seasonNumber: Int?
     let episodeType: String?
+    
+    // Extended metadata
+    let link: String?
+    let explicit: Bool?
+    let subtitle: String?
+    let author: String?
+    let contentHTML: String?
+    let chaptersURL: String?
+    let transcripts: String?  // JSON array
 }
 
 /// Errors that can occur during feed parsing
@@ -64,17 +91,37 @@ final class FeedParser: @unchecked Sendable {
     
     nonisolated init() {}
     
+    /// Encode an array of strings to JSON
+    nonisolated private static func encodeJSONArray(_ array: [String]) -> String? {
+        guard let data = try? JSONEncoder().encode(array),
+              let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return string
+    }
+    
+    /// Encode an array of dictionaries to JSON
+    nonisolated private static func encodeJSONObject(_ array: [[String: String]]) -> String? {
+        guard let data = try? JSONEncoder().encode(array),
+              let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return string
+    }
+    
     /// Parse feed data
-    /// - Parameter data: The RSS/Atom feed data
-    /// - Returns: A ParsedPodcast with all episodes
-    nonisolated func parse(data: Data) throws -> ParsedPodcast {
+    /// - Parameters:
+    ///   - data: The RSS/Atom feed data
+    ///   - maxEpisodes: Optional maximum number of episodes to parse (nil = all)
+    /// - Returns: A ParseResult with podcast info and whether more episodes exist
+    nonisolated func parse(data: Data, maxEpisodes: Int? = nil) throws -> ParseResult {
         // Create a delegate handler that does all the parsing work
-        let handler = XMLParserDelegateHandler()
+        let handler = XMLParserDelegateHandler(maxEpisodes: maxEpisodes)
         
         let parser = XMLParser(data: data)
         parser.delegate = handler
         
-        guard parser.parse() else {
+        guard parser.parse() || handler.reachedEpisodeLimit else {
             if let error = handler.parsingError {
                 throw error
             }
@@ -85,13 +132,28 @@ final class FeedParser: @unchecked Sendable {
             throw FeedParserError.notAFeed
         }
         
-        return ParsedPodcast(
+        let podcast = ParsedPodcast(
             title: title,
             author: handler.feedAuthor,
             description: handler.feedDescription,
             artworkURL: handler.feedArtworkURL,
             homePageURL: handler.feedHomePageURL,
-            episodes: handler.episodes
+            episodes: handler.episodes,
+            language: handler.feedLanguage,
+            showType: handler.feedShowType,
+            copyright: handler.feedCopyright,
+            ownerName: handler.feedOwnerName,
+            ownerEmail: handler.feedOwnerEmail,
+            explicit: handler.feedExplicit,
+            subtitle: handler.feedSubtitle,
+            fundingURL: handler.feedFundingURL,
+            htmlDescription: handler.feedHTMLDescription,
+            categories: handler.feedCategories.isEmpty ? nil : Self.encodeJSONArray(handler.feedCategories)
+        )
+        
+        return ParseResult(
+            podcast: podcast,
+            hasMoreEpisodes: handler.reachedEpisodeLimit
         )
     }
 }
@@ -107,9 +169,24 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
     nonisolated(unsafe) var feedDescription: String?
     nonisolated(unsafe) var feedArtworkURL: String?
     nonisolated(unsafe) var feedHomePageURL: String?
+    nonisolated(unsafe) var feedLanguage: String?
+    nonisolated(unsafe) var feedShowType: String?
+    nonisolated(unsafe) var feedCopyright: String?
+    nonisolated(unsafe) var feedOwnerName: String?
+    nonisolated(unsafe) var feedOwnerEmail: String?
+    nonisolated(unsafe) var feedExplicit: Bool?
+    nonisolated(unsafe) var feedSubtitle: String?
+    nonisolated(unsafe) var feedFundingURL: String?
+    nonisolated(unsafe) var feedHTMLDescription: String?
+    nonisolated(unsafe) var feedCategories: [String] = []
     
     // Episode collection
     nonisolated(unsafe) var episodes: [ParsedEpisode] = []
+    
+    // Episode limit tracking
+    nonisolated(unsafe) var maxEpisodes: Int?
+    nonisolated(unsafe) var reachedEpisodeLimit = false
+    nonisolated(unsafe) weak var parser: XMLParser?
     
     // Current parsing state
     nonisolated(unsafe) var currentElement = ""
@@ -130,6 +207,18 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
     nonisolated(unsafe) var itemEpisodeNumber: Int?
     nonisolated(unsafe) var itemSeasonNumber: Int?
     nonisolated(unsafe) var itemEpisodeType: String?
+    nonisolated(unsafe) var itemLink: String?
+    nonisolated(unsafe) var itemExplicit: Bool?
+    nonisolated(unsafe) var itemSubtitle: String?
+    nonisolated(unsafe) var itemAuthor: String?
+    nonisolated(unsafe) var itemContentHTML: String?
+    nonisolated(unsafe) var itemChaptersURL: String?
+    nonisolated(unsafe) var itemTranscripts: [[String: String]] = []
+    
+    // Parsing state for owner element
+    nonisolated(unsafe) var isParsingOwner = false
+    nonisolated(unsafe) var tempOwnerName: String?
+    nonisolated(unsafe) var tempOwnerEmail: String?
     
     // Date formatters for RSS dates
     nonisolated private static let dateFormatters: [DateFormatter] = {
@@ -148,8 +237,18 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
         }
     }()
     
-    nonisolated override init() {
+    nonisolated init(maxEpisodes: Int? = nil) {
+        self.maxEpisodes = maxEpisodes
         super.init()
+    }
+    
+    /// Encode an array of dictionaries to JSON
+    nonisolated private static func encodeJSONObject(_ array: [[String: String]]) -> String? {
+        guard let data = try? JSONEncoder().encode(array),
+              let string = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        return string
     }
     
     nonisolated private func resetItemState() {
@@ -166,6 +265,13 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
         itemEpisodeNumber = nil
         itemSeasonNumber = nil
         itemEpisodeType = nil
+        itemLink = nil
+        itemExplicit = nil
+        itemSubtitle = nil
+        itemAuthor = nil
+        itemContentHTML = nil
+        itemChaptersURL = nil
+        itemTranscripts = []
     }
     
     // MARK: - XMLParserDelegate
@@ -177,6 +283,11 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
         qualifiedName qName: String?,
         attributes attributeDict: [String: String] = [:]
     ) {
+        // Capture parser reference for early termination
+        if self.parser == nil {
+            self.parser = parser
+        }
+        
         currentElement = elementName.lowercased()
         currentText = ""
         
@@ -218,6 +329,44 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
                 }
             }
             
+        case "itunes:owner":
+            isParsingOwner = true
+            tempOwnerName = nil
+            tempOwnerEmail = nil
+            
+        case "itunes:category":
+            // Build categories array from nested structure
+            if let text = attributeDict["text"], !text.isEmpty {
+                feedCategories.append(text)
+            }
+            
+        case "podcast:funding":
+            if let url = attributeDict["url"], !url.isEmpty, !isParsingItem {
+                feedFundingURL = url
+            }
+            
+        case "podcast:transcript":
+            if isParsingItem {
+                var transcript: [String: String] = [:]
+                if let url = attributeDict["url"] {
+                    transcript["url"] = url
+                }
+                if let type = attributeDict["type"] {
+                    transcript["type"] = type
+                }
+                if let language = attributeDict["language"] {
+                    transcript["language"] = language
+                }
+                if !transcript.isEmpty {
+                    itemTranscripts.append(transcript)
+                }
+            }
+            
+        case "podcast:chapters":
+            if isParsingItem, let url = attributeDict["url"], !url.isEmpty {
+                itemChaptersURL = url
+            }
+            
         default:
             break
         }
@@ -242,6 +391,7 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
             case "item", "entry":
                 // Finish parsing this episode
                 if let audioURL = itemAudioURL, !audioURL.isEmpty {
+                    let transcriptsJSON = itemTranscripts.isEmpty ? nil : Self.encodeJSONObject(itemTranscripts)
                     let episode = ParsedEpisode(
                         guid: itemGuid ?? audioURL, // Use audio URL as fallback GUID
                         title: itemTitle ?? "Untitled Episode",
@@ -254,9 +404,23 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
                         imageURL: itemImageURL,
                         episodeNumber: itemEpisodeNumber,
                         seasonNumber: itemSeasonNumber,
-                        episodeType: itemEpisodeType
+                        episodeType: itemEpisodeType,
+                        link: itemLink,
+                        explicit: itemExplicit,
+                        subtitle: itemSubtitle,
+                        author: itemAuthor,
+                        contentHTML: itemContentHTML,
+                        chaptersURL: itemChaptersURL,
+                        transcripts: transcriptsJSON
                     )
                     episodes.append(episode)
+                    
+                    // Check if we've reached the episode limit
+                    if let maxEpisodes = maxEpisodes, episodes.count >= maxEpisodes {
+                        reachedEpisodeLimit = true
+                        self.parser?.abortParsing()
+                        return
+                    }
                 }
                 isParsingItem = false
                 
@@ -268,7 +432,16 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
                     itemTitle = text
                 }
                 
-            case "description", "content", "content:encoded", "summary":
+            case "description", "summary":
+                if itemDescription == nil || text.count > (itemDescription?.count ?? 0) {
+                    itemDescription = text.strippingHTML()
+                }
+                
+            case "content:encoded", "content":
+                // Preserve HTML in contentHTML, strip for description
+                if itemContentHTML == nil || text.count > (itemContentHTML?.count ?? 0) {
+                    itemContentHTML = text
+                }
                 if itemDescription == nil || text.count > (itemDescription?.count ?? 0) {
                     itemDescription = text.strippingHTML()
                 }
@@ -288,6 +461,25 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
             case "itunes:episodetype":
                 itemEpisodeType = text
                 
+            case "link":
+                if itemLink == nil && !text.isEmpty {
+                    itemLink = text
+                }
+                
+            case "itunes:explicit":
+                itemExplicit = Self.parseExplicit(text)
+                
+            case "itunes:subtitle":
+                if itemSubtitle == nil {
+                    itemSubtitle = text
+                }
+                
+            case "itunes:author", "author", "dc:creator":
+                // Episode-level author (guest name)
+                if itemAuthor == nil {
+                    itemAuthor = text
+                }
+                
             default:
                 break
             }
@@ -304,14 +496,71 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
                     feedAuthor = text
                 }
                 
-            case "description", "subtitle", "itunes:summary":
+            case "description", "itunes:summary":
                 if feedDescription == nil || text.count > (feedDescription?.count ?? 0) {
                     feedDescription = text.strippingHTML()
+                }
+                
+            case "content:encoded":
+                // Preserve HTML version separately
+                if feedHTMLDescription == nil || text.count > (feedHTMLDescription?.count ?? 0) {
+                    feedHTMLDescription = text
+                }
+                if feedDescription == nil || text.count > (feedDescription?.count ?? 0) {
+                    feedDescription = text.strippingHTML()
+                }
+                
+            case "itunes:subtitle":
+                if feedSubtitle == nil {
+                    feedSubtitle = text
                 }
                 
             case "link":
                 if feedHomePageURL == nil && !text.isEmpty {
                     feedHomePageURL = text
+                }
+                
+            case "language":
+                if feedLanguage == nil {
+                    feedLanguage = text
+                }
+                
+            case "copyright":
+                if feedCopyright == nil {
+                    feedCopyright = text
+                }
+                
+            case "itunes:type":
+                if feedShowType == nil {
+                    feedShowType = text
+                }
+                
+            case "itunes:explicit":
+                if feedExplicit == nil {
+                    feedExplicit = Self.parseExplicit(text)
+                }
+                
+            case "itunes:keywords":
+                // Note: keywords are comma-separated, we're not splitting them
+                // Could add logic to parse and store as array if needed
+                break
+                
+            case "itunes:owner":
+                // End of owner element, save the collected data
+                if tempOwnerName != nil || tempOwnerEmail != nil {
+                    feedOwnerName = tempOwnerName
+                    feedOwnerEmail = tempOwnerEmail
+                }
+                isParsingOwner = false
+                
+            case "itunes:name":
+                if isParsingOwner {
+                    tempOwnerName = text
+                }
+                
+            case "itunes:email":
+                if isParsingOwner {
+                    tempOwnerEmail = text
                 }
                 
             default:
@@ -360,6 +609,18 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
                   let seconds = Int(components[2]) else { return nil }
             return TimeInterval(hours * 3600 + minutes * 60 + seconds)
             
+        default:
+            return nil
+        }
+    }
+    
+    nonisolated private static func parseExplicit(_ string: String) -> Bool? {
+        let lowercased = string.lowercased()
+        switch lowercased {
+        case "true", "yes":
+            return true
+        case "false", "no", "clean":
+            return false
         default:
             return nil
         }
