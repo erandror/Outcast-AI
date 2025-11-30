@@ -9,12 +9,18 @@ import SwiftUI
 import GRDB
 
 struct EpisodeView: View {
-    let episode: EpisodeWithPodcast
+    let episodes: [EpisodeWithPodcast]
+    let startIndex: Int
+    
     @Environment(\.dismiss) private var dismiss
     @State private var showPlayer = false
     @State private var showPodcastDetail = false
     @State private var playbackProgress: Double = 0
     @ObservedObject private var playbackManager = PlaybackManager.shared
+    
+    private var episode: EpisodeWithPodcast {
+        episodes[startIndex]
+    }
     
     var body: some View {
         ZStack {
@@ -53,7 +59,7 @@ struct EpisodeView: View {
             calculateProgress()
         }
         .fullScreenCover(isPresented: $showPlayer) {
-            PlayerView(episode: episode)
+            PlayerView(episodes: episodes, startIndex: startIndex)
         }
         .sheet(isPresented: $showPodcastDetail) {
             NavigationStack {
@@ -433,5 +439,5 @@ struct EpisodeView: View {
         playingStatus: .inProgress
     )
     
-    EpisodeView(episode: EpisodeWithPodcast(episode: episode, podcast: podcast))
+    EpisodeView(episodes: [EpisodeWithPodcast(episode: episode, podcast: podcast)], startIndex: 0)
 }

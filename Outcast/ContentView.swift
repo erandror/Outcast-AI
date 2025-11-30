@@ -86,10 +86,14 @@ struct ContentView: View {
             await loadEpisodes()
         }
         .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
-            PlayerView(episode: episode)
+            if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
+                PlayerView(episodes: episodes, startIndex: index)
+            }
         }
         .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
-            EpisodeView(episode: episode)
+            if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
+                EpisodeView(episodes: episodes, startIndex: index)
+            }
         }
         .sheet(isPresented: $showImport) {
             ImportView()
