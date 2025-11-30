@@ -187,20 +187,10 @@ struct ImportView: View {
                         message: "No new podcasts to import. You may already be subscribed to all podcasts in this file."
                     )
                 } else {
-                    // Refresh the newly imported podcasts to get episodes
-                    let refresher = FeedRefresher.shared
-                    var totalEpisodes = 0
-                    for podcast in podcasts {
-                        do {
-                            totalEpisodes += try await refresher.refresh(podcast: podcast)
-                        } catch {
-                            print("Failed to refresh \(podcast.title): \(error)")
-                        }
-                    }
-                    
+                    // Immediate success - background refresh already started
                     importResult = ImportResult(
                         success: true,
-                        message: "Successfully imported \(podcasts.count) podcast\(podcasts.count == 1 ? "" : "s") with \(totalEpisodes) episode\(totalEpisodes == 1 ? "" : "s")."
+                        message: "Added \(podcasts.count) podcast\(podcasts.count == 1 ? "" : "s"). Syncing episodes in the background..."
                     )
                 }
             } catch {

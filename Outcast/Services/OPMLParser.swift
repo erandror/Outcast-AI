@@ -151,10 +151,12 @@ final class OPMLParser: NSObject, XMLParserDelegate, @unchecked Sendable {
 extension OPMLParser {
     
     /// Parse OPML and import feeds into the database
+    /// Returns immediately after creating podcast records; episodes are synced in background
     static func importOPML(from url: URL, database: AppDatabase) async throws -> [PodcastRecord] {
         let parser = OPMLParser()
         let document = try parser.parse(contentsOf: url)
         
+        // Create podcast records immediately (no refresh yet)
         let importedPodcasts = try await database.writeAsync { db -> [PodcastRecord] in
             var podcasts: [PodcastRecord] = []
             
@@ -164,12 +166,13 @@ extension OPMLParser {
                     continue
                 }
                 
-                // Create a new podcast record
+                // Create a new podcast record (placeholder, will be enriched during refresh)
                 var podcast = PodcastRecord(
                     feedURL: feed.feedURL,
                     title: feed.title ?? "Untitled Podcast",
                     homePageURL: feed.homePageURL,
-                    artworkColor: Self.generateRandomColor()
+                    artworkColor: Self.generateRandomColor(),
+                    isFullyLoaded: false  // Mark as not fully loaded yet
                 )
                 
                 try podcast.insert(db)
@@ -177,6 +180,13 @@ extension OPMLParser {
             }
             
             return podcasts
+        }
+        
+        // Fire off background import (non-blocking)
+        if !importedPodcasts.isEmpty {
+            Task.detached(priority: .utility) {
+                await ImportCoordinator.shared.importPodcasts(importedPodcasts)
+            }
         }
         
         return importedPodcasts

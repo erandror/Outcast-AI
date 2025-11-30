@@ -388,6 +388,199 @@ actor FeedRefresher {
         }
     }
     
+    /// Refresh a podcast imported from OPML (two-phase: fast initial, then background completion)
+    /// - Parameter podcast: The podcast record to refresh
+    /// - Returns: Number of initial episodes loaded (first 3)
+    func refreshForImport(podcast: PodcastRecord) async throws -> Int {
+        // Phase 1: Quick refresh with first 3 episodes
+        let (updatedPodcast, feedData, httpResponse, hasMoreEpisodes) = try await quickRefresh(podcast: podcast)
+        
+        // Phase 2: Background completion (load remaining episodes if needed)
+        if hasMoreEpisodes {
+            Task.detached(priority: .background) { [weak self] in
+                guard let self = self else { return }
+                await self.completeRefresh(
+                    podcast: updatedPodcast,
+                    feedData: feedData,
+                    httpResponse: httpResponse
+                )
+            }
+        }
+        
+        // Return count of initial episodes loaded
+        return try await database.readAsync { db in
+            guard let podcastId = updatedPodcast.id else { return 0 }
+            return try EpisodeRecord.fetchAllForPodcast(podcastId, db: db).count
+        }
+    }
+    
+    /// Phase 1: Quick refresh with first 3 episodes for imported podcast
+    private func quickRefresh(podcast: PodcastRecord) async throws -> (PodcastRecord, Data, HTTPURLResponse, Bool) {
+        guard let url = URL(string: podcast.feedURL) else {
+            throw FeedParserError.invalidData
+        }
+        
+        // Fetch feed
+        var request = URLRequest(url: url)
+        request.setValue("Outcast/1.0", forHTTPHeaderField: "User-Agent")
+        
+        let (data, response) = try await urlSession.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw FeedParserError.networkError(URLError(.badServerResponse))
+        }
+        
+        // Parse with limit of 3 episodes
+        let parser = FeedParser()
+        let parseResult = try parser.parse(data: data, maxEpisodes: 3)
+        let parsedFeed = parseResult.podcast
+        
+        // Update podcast and insert first 3 episodes
+        let updatedPodcast = try await database.writeAsync { db -> PodcastRecord in
+            var podcast = podcast
+            podcast.title = parsedFeed.title
+            podcast.author = parsedFeed.author
+            podcast.podcastDescription = parsedFeed.description
+            podcast.artworkURL = parsedFeed.artworkURL
+            podcast.homePageURL = parsedFeed.homePageURL
+            podcast.lastRefreshDate = Date()
+            podcast.contentHash = data.md5Hash
+            podcast.etag = httpResponse.value(forHTTPHeaderField: "ETag")
+            podcast.lastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified")
+            podcast.isFullyLoaded = !parseResult.hasMoreEpisodes
+            
+            // Update extended metadata
+            podcast.language = parsedFeed.language
+            podcast.showType = parsedFeed.showType
+            podcast.copyright = parsedFeed.copyright
+            podcast.ownerName = parsedFeed.ownerName
+            podcast.ownerEmail = parsedFeed.ownerEmail
+            podcast.explicit = parsedFeed.explicit
+            podcast.subtitle = parsedFeed.subtitle
+            podcast.fundingURL = parsedFeed.fundingURL
+            podcast.htmlDescription = parsedFeed.htmlDescription
+            podcast.categories = parsedFeed.categories
+            
+            try podcast.update(db)
+            
+            guard let podcastId = podcast.id else {
+                throw FeedParserError.parsingFailed("Failed to get podcast ID")
+            }
+            
+            // Insert first 3 episodes
+            for parsedEpisode in parsedFeed.episodes {
+                // Skip if episode already exists
+                if try EpisodeRecord.exists(guid: parsedEpisode.guid, podcastId: podcastId, db: db) {
+                    continue
+                }
+                
+                var episode = EpisodeRecord(
+                    podcastId: podcastId,
+                    guid: parsedEpisode.guid,
+                    title: parsedEpisode.title,
+                    episodeDescription: parsedEpisode.description,
+                    audioURL: parsedEpisode.audioURL,
+                    audioMimeType: parsedEpisode.audioMimeType,
+                    fileSize: parsedEpisode.fileSize,
+                    duration: parsedEpisode.duration,
+                    publishedDate: parsedEpisode.publishedDate,
+                    imageURL: parsedEpisode.imageURL,
+                    episodeNumber: parsedEpisode.episodeNumber,
+                    seasonNumber: parsedEpisode.seasonNumber,
+                    episodeType: parsedEpisode.episodeType,
+                    link: parsedEpisode.link,
+                    explicit: parsedEpisode.explicit,
+                    subtitle: parsedEpisode.subtitle,
+                    author: parsedEpisode.author,
+                    contentHTML: parsedEpisode.contentHTML,
+                    chaptersURL: parsedEpisode.chaptersURL,
+                    transcripts: parsedEpisode.transcripts
+                )
+                try episode.insert(db)
+            }
+            
+            return podcast
+        }
+        
+        return (updatedPodcast, data, httpResponse, parseResult.hasMoreEpisodes)
+    }
+    
+    /// Phase 2: Complete refresh by loading remaining episodes in background
+    private func completeRefresh(
+        podcast: PodcastRecord,
+        feedData: Data,
+        httpResponse: HTTPURLResponse
+    ) async {
+        do {
+            // Parse full feed
+            let parser = FeedParser()
+            let parseResult = try parser.parse(data: feedData)
+            let parsedFeed = parseResult.podcast
+            
+            guard let podcastId = podcast.id else { return }
+            
+            // Get episodes we already inserted (first 3)
+            let existingGuids = try await database.readAsync { db in
+                try EpisodeRecord.fetchAllForPodcast(podcastId, db: db).map { $0.guid }
+            }
+            
+            // Filter out episodes we already have
+            let newEpisodes = parsedFeed.episodes.filter { !existingGuids.contains($0.guid) }
+            
+            // Insert remaining episodes in batches of 50
+            let batchSize = 50
+            for batchStart in stride(from: 0, to: newEpisodes.count, by: batchSize) {
+                let batchEnd = min(batchStart + batchSize, newEpisodes.count)
+                let batch = Array(newEpisodes[batchStart..<batchEnd])
+                
+                try await database.writeAsync { db in
+                    for parsedEpisode in batch {
+                        // Double-check episode doesn't exist (race condition safety)
+                        if try EpisodeRecord.exists(guid: parsedEpisode.guid, podcastId: podcastId, db: db) {
+                            continue
+                        }
+                        
+                        var episode = EpisodeRecord(
+                            podcastId: podcastId,
+                            guid: parsedEpisode.guid,
+                            title: parsedEpisode.title,
+                            episodeDescription: parsedEpisode.description,
+                            audioURL: parsedEpisode.audioURL,
+                            audioMimeType: parsedEpisode.audioMimeType,
+                            fileSize: parsedEpisode.fileSize,
+                            duration: parsedEpisode.duration,
+                            publishedDate: parsedEpisode.publishedDate,
+                            imageURL: parsedEpisode.imageURL,
+                            episodeNumber: parsedEpisode.episodeNumber,
+                            seasonNumber: parsedEpisode.seasonNumber,
+                            episodeType: parsedEpisode.episodeType,
+                            link: parsedEpisode.link,
+                            explicit: parsedEpisode.explicit,
+                            subtitle: parsedEpisode.subtitle,
+                            author: parsedEpisode.author,
+                            contentHTML: parsedEpisode.contentHTML,
+                            chaptersURL: parsedEpisode.chaptersURL,
+                            transcripts: parsedEpisode.transcripts
+                        )
+                        try episode.insert(db)
+                    }
+                }
+            }
+            
+            // Mark podcast as fully loaded
+            try await database.writeAsync { db in
+                var updatedPodcast = podcast
+                updatedPodcast.isFullyLoaded = true
+                try updatedPodcast.update(db)
+            }
+            
+            print("✓ Background refresh complete for \(podcast.title): \(newEpisodes.count) additional episodes")
+        } catch {
+            print("Background refresh failed for \(podcast.title): \(error)")
+        }
+    }
+    
     private static func generateRandomColor() -> String {
         let colors = [
             "#FF6B35", "#4ECDC4", "#95E1D3", "#F38181", "#AA96DA",

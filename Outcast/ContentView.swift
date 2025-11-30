@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var lastRefreshDate: Date?
     @State private var showDownloads = false
     @State private var selectedFilter: ForYouFilter = .latest
+    @State private var importProgress: ImportCoordinator.ImportProgress?
     @ObservedObject private var playbackManager = PlaybackManager.shared
 
     var body: some View {
@@ -30,6 +31,11 @@ struct ContentView: View {
                     VStack(spacing: 0) {
                         // Header
                         headerView
+                        
+                        // Import progress banner (if importing)
+                        if let progress = importProgress {
+                            ImportProgressBanner(progress: progress)
+                        }
                         
                         // Filter bar
                         ForYouFilterBar(selectedFilter: $selectedFilter)
@@ -89,10 +95,23 @@ struct ContentView: View {
         }
         .task {
             await loadEpisodes()
+            // Start monitoring import progress
+            await monitorImportProgress()
         }
         .onChange(of: selectedFilter) {
             Task {
                 await loadEpisodes()
+            }
+        }
+        .onChange(of: importProgress) { _, newProgress in
+            // Reload episodes when import completes
+            if let progress = newProgress, progress.isComplete {
+                Task {
+                    await loadEpisodes()
+                    // Clear progress after a brief delay
+                    try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                    importProgress = nil
+                }
             }
         }
         .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
@@ -204,6 +223,25 @@ struct ContentView: View {
             lastRefreshDate = Date()
         } catch {
             print("Failed to refresh: \(error)")
+        }
+    }
+    
+    private func monitorImportProgress() async {
+        // Poll import progress every 0.5 seconds
+        while true {
+            let coordinator = ImportCoordinator.shared
+            if let progress = await coordinator.getCurrentProgress() {
+                await MainActor.run {
+                    importProgress = progress
+                }
+            } else if importProgress != nil {
+                // Import completed
+                await MainActor.run {
+                    importProgress = nil
+                }
+            }
+            
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         }
     }
 }
