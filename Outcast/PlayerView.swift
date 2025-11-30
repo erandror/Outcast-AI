@@ -10,12 +10,19 @@ import SwiftUI
 struct PlayerView: View {
     let episode: EpisodeWithPodcast
     @Environment(\.dismiss) private var dismiss
-    @State private var isPlaying = false
-    @State private var currentTime: TimeInterval = 0
+    @ObservedObject private var playbackManager = PlaybackManager.shared
     @State private var showingPodcastDetail = false
     
     private var duration: TimeInterval {
-        episode.episode.duration ?? 0
+        playbackManager.duration > 0 ? playbackManager.duration : (episode.episode.duration ?? 0)
+    }
+    
+    private var currentTime: TimeInterval {
+        playbackManager.currentTime
+    }
+    
+    private var isPlaying: Bool {
+        playbackManager.isPlaying
     }
     
     var body: some View {
@@ -80,9 +87,19 @@ struct PlayerView: View {
                 
                 // Progress slider
                 VStack(spacing: 8) {
-                    Slider(value: $currentTime, in: 0...max(1, duration))
-                        .tint(.white)
-                        .padding(.horizontal, 32)
+                    Slider(
+                        value: Binding(
+                            get: { currentTime },
+                            set: { newValue in
+                                Task {
+                                    await playbackManager.seek(to: newValue)
+                                }
+                            }
+                        ),
+                        in: 0...max(1, duration)
+                    )
+                    .tint(.white)
+                    .padding(.horizontal, 32)
                     
                     HStack {
                         Text(formatTime(currentTime))
@@ -99,8 +116,9 @@ struct PlayerView: View {
                 // Playback controls
                 HStack(spacing: 48) {
                     Button {
-                        // Skip back 15 seconds
-                        currentTime = max(0, currentTime - 15)
+                        Task {
+                            await playbackManager.skipBackward(by: 15)
+                        }
                     } label: {
                         Image(systemName: "gobackward.15")
                             .font(.title)
@@ -108,7 +126,7 @@ struct PlayerView: View {
                     }
                     
                     Button {
-                        isPlaying.toggle()
+                        playbackManager.togglePlayPause()
                     } label: {
                         Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 72))
@@ -116,8 +134,9 @@ struct PlayerView: View {
                     }
                     
                     Button {
-                        // Skip forward 30 seconds
-                        currentTime = min(duration, currentTime + 30)
+                        Task {
+                            await playbackManager.skipForward(by: 30)
+                        }
                     } label: {
                         Image(systemName: "goforward.30")
                             .font(.title)
@@ -128,13 +147,12 @@ struct PlayerView: View {
                 Spacer()
             }
         }
-        .onAppear {
-            currentTime = episode.episode.playedUpTo
-        }
-        .onDisappear {
-            // Save playback position
-            Task {
-                await savePlaybackPosition()
+        .task {
+            // Load episode into playback manager
+            do {
+                try await playbackManager.load(episode: episode.episode, autoPlay: false)
+            } catch {
+                print("Failed to load episode: \(error)")
             }
         }
         .sheet(isPresented: $showingPodcastDetail) {
@@ -162,19 +180,6 @@ struct PlayerView: View {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         } else {
             return String(format: "%d:%02d", minutes, seconds)
-        }
-    }
-    
-    private func savePlaybackPosition() async {
-        let position = currentTime  // Capture on MainActor first
-        let episodeToUpdate = episode.episode
-        do {
-            try await AppDatabase.shared.writeAsync { db in
-                var updatedEpisode = episodeToUpdate
-                try updatedEpisode.updatePlaybackPosition(position, db: db)
-            }
-        } catch {
-            print("Failed to save playback position: \(error)")
         }
     }
 }

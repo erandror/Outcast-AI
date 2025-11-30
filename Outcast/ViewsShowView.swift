@@ -11,7 +11,8 @@ import GRDB
 struct ShowView: View {
     let podcast: PodcastRecord
     @State private var episodes: [EpisodeWithPodcast] = []
-    @State private var selectedEpisode: EpisodeWithPodcast?
+    @State private var selectedEpisodeForPlayer: EpisodeWithPodcast?
+    @State private var selectedEpisodeForDetail: EpisodeWithPodcast?
     @State private var showPlayer = false
     @State private var isHeaderExpanded = false
     @State private var isLoading = true
@@ -55,10 +56,16 @@ struct ShowView: View {
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(episodes) { episode in
-                                EpisodeListRow(episode: episode) {
-                                    selectedEpisode = episode
-                                    showPlayer = true
-                                }
+                                EpisodeListRow(
+                                    episode: episode,
+                                    onPlay: {
+                                        selectedEpisodeForPlayer = episode
+                                        showPlayer = true
+                                    },
+                                    onTapEpisode: {
+                                        selectedEpisodeForDetail = episode
+                                    }
+                                )
                                 
                                 // Divider
                                 Rectangle()
@@ -90,8 +97,11 @@ struct ShowView: View {
         .task {
             await loadEpisodes()
         }
-        .fullScreenCover(item: $selectedEpisode) { episode in
+        .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
             PlayerView(episode: episode)
+        }
+        .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
+            EpisodeView(episode: episode)
         }
     }
     

@@ -15,6 +15,24 @@ enum PlayingStatus: Int, Codable, Sendable {
     case completed = 2
 }
 
+/// Download status for an episode
+enum DownloadStatus: Int, Codable, Sendable {
+    case notDownloaded = 0
+    case queued = 1
+    case downloading = 2
+    case downloaded = 3
+    case failed = 4
+    case paused = 5
+}
+
+/// Auto-download status tracking
+enum AutoDownloadStatus: Int, Codable, Sendable {
+    case notSpecified = 0
+    case autoDownloaded = 1
+    case userDownloaded = 2
+    case playerStreaming = 3
+}
+
 /// Represents a podcast episode in the database
 struct EpisodeRecord: Identifiable, Codable, Sendable {
     var id: Int64?
@@ -39,6 +57,15 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
     var isDownloaded: Bool
     var downloadedPath: String?
     
+    // Download management
+    var downloadStatus: DownloadStatus
+    var downloadProgress: Double
+    var localFilePath: String?
+    var downloadedFileSize: Int64?
+    var downloadTaskIdentifier: String?
+    var downloadError: String?
+    var autoDownloadStatus: AutoDownloadStatus
+    
     init(
         id: Int64? = nil,
         uuid: String = UUID().uuidString,
@@ -58,7 +85,14 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         playedUpTo: TimeInterval = 0,
         playingStatus: PlayingStatus = .notPlayed,
         isDownloaded: Bool = false,
-        downloadedPath: String? = nil
+        downloadedPath: String? = nil,
+        downloadStatus: DownloadStatus = .notDownloaded,
+        downloadProgress: Double = 0.0,
+        localFilePath: String? = nil,
+        downloadedFileSize: Int64? = nil,
+        downloadTaskIdentifier: String? = nil,
+        downloadError: String? = nil,
+        autoDownloadStatus: AutoDownloadStatus = .notSpecified
     ) {
         self.id = id
         self.uuid = uuid
@@ -79,6 +113,13 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         self.playingStatus = playingStatus
         self.isDownloaded = isDownloaded
         self.downloadedPath = downloadedPath
+        self.downloadStatus = downloadStatus
+        self.downloadProgress = downloadProgress
+        self.localFilePath = localFilePath
+        self.downloadedFileSize = downloadedFileSize
+        self.downloadTaskIdentifier = downloadTaskIdentifier
+        self.downloadError = downloadError
+        self.autoDownloadStatus = autoDownloadStatus
     }
 }
 
@@ -164,6 +205,40 @@ extension EpisodeRecord {
     /// Mark as completed
     mutating func markAsCompleted(db: Database) throws {
         playingStatus = .completed
+        try update(db)
+    }
+    
+    /// Fetch downloaded episodes
+    static func fetchDownloaded(db: Database) throws -> [EpisodeRecord] {
+        try EpisodeRecord
+            .filter(Column("downloadStatus") == DownloadStatus.downloaded.rawValue)
+            .order(Column("publishedDate").desc)
+            .fetchAll(db)
+    }
+    
+    /// Fetch episodes currently downloading
+    static func fetchDownloading(db: Database) throws -> [EpisodeRecord] {
+        try EpisodeRecord
+            .filter(Column("downloadStatus") == DownloadStatus.downloading.rawValue || 
+                   Column("downloadStatus") == DownloadStatus.queued.rawValue)
+            .order(Column("publishedDate").desc)
+            .fetchAll(db)
+    }
+    
+    /// Update download status
+    mutating func updateDownloadStatus(_ status: DownloadStatus, db: Database) throws {
+        downloadStatus = status
+        if status == .downloaded {
+            isDownloaded = true
+        } else if status == .notDownloaded || status == .failed {
+            isDownloaded = false
+        }
+        try update(db)
+    }
+    
+    /// Update download progress
+    mutating func updateDownloadProgress(_ progress: Double, db: Database) throws {
+        downloadProgress = progress
         try update(db)
     }
 }

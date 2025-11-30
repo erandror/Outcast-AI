@@ -10,11 +10,14 @@ import GRDB
 
 struct ContentView: View {
     @State private var episodes: [EpisodeWithPodcast] = []
-    @State private var selectedEpisode: EpisodeWithPodcast?
+    @State private var selectedEpisodeForPlayer: EpisodeWithPodcast?
+    @State private var selectedEpisodeForDetail: EpisodeWithPodcast?
     @State private var showPlayer = false
     @State private var showImport = false
     @State private var isRefreshing = false
     @State private var lastRefreshDate: Date?
+    @State private var showDownloads = false
+    @ObservedObject private var playbackManager = PlaybackManager.shared
 
     var body: some View {
         NavigationStack {
@@ -34,10 +37,16 @@ struct ContentView: View {
                             // Episodes list
                             LazyVStack(spacing: 0) {
                                 ForEach(episodes) { episode in
-                                    EpisodeListRow(episode: episode) {
-                                        selectedEpisode = episode
-                                        showPlayer = true
-                                    }
+                                    EpisodeListRow(
+                                        episode: episode,
+                                        onPlay: {
+                                            selectedEpisodeForPlayer = episode
+                                            showPlayer = true
+                                        },
+                                        onTapEpisode: {
+                                            selectedEpisodeForDetail = episode
+                                        }
+                                    )
                                     
                                     // Divider
                                     Rectangle()
@@ -59,14 +68,28 @@ struct ContentView: View {
                         .tint(.white)
                         .scaleEffect(1.5)
                 }
+                
+                // Mini Player at bottom
+                VStack {
+                    Spacer()
+                    MiniPlayer()
+                }
             }
             .navigationBarHidden(true)
+        }
+        .sheet(isPresented: $showDownloads) {
+            NavigationStack {
+                DownloadsListView()
+            }
         }
         .task {
             await loadEpisodes()
         }
-        .fullScreenCover(item: $selectedEpisode) { episode in
+        .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
             PlayerView(episode: episode)
+        }
+        .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
+            EpisodeView(episode: episode)
         }
         .sheet(isPresented: $showImport) {
             ImportView()
@@ -85,6 +108,14 @@ struct ContentView: View {
                 .fontWeight(.bold)
                 .foregroundStyle(.white)
             Spacer()
+            
+            Button {
+                showDownloads = true
+            } label: {
+                Image(systemName: "arrow.down.circle")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+            }
             
             Button {
                 showImport = true

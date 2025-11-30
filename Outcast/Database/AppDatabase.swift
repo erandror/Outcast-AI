@@ -120,6 +120,22 @@ final class AppDatabase: Sendable {
             try db.create(index: "episode_guid_podcastId", on: "episode", columns: ["guid", "podcastId"], unique: true)
         }
         
+        // Migration v2: Add download management fields
+        migrator.registerMigration("v2_downloads") { db in
+            try db.alter(table: "episode") { t in
+                t.add(column: "downloadStatus", .integer).notNull().defaults(to: 0)
+                t.add(column: "downloadProgress", .double).notNull().defaults(to: 0.0)
+                t.add(column: "localFilePath", .text)
+                t.add(column: "downloadedFileSize", .integer)
+                t.add(column: "downloadTaskIdentifier", .text)
+                t.add(column: "downloadError", .text)
+                t.add(column: "autoDownloadStatus", .integer).notNull().defaults(to: 0)
+            }
+            
+            // Create index for efficient download queries
+            try db.create(index: "episode_downloadStatus", on: "episode", columns: ["downloadStatus"])
+        }
+        
         return migrator
     }
 }

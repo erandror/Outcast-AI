@@ -189,15 +189,21 @@ extension UIColor {
 
 extension Color {
     func components() -> (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
-        let uiColor = UIColor(self)
-        var r: CGFloat = 0
-        var g: CGFloat = 0
-        var b: CGFloat = 0
-        var a: CGFloat = 0
+        // Use cgColor directly to avoid circular reference with UIColor extension
+        guard let cgColor = cgColor,
+              let components = cgColor.components else {
+            return (1, 1, 1, 1) // Default to white
+        }
         
-        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let numComponents = cgColor.numberOfComponents
+        if numComponents == 2 {
+            // Grayscale color
+            return (components[0], components[0], components[0], components[1])
+        } else if numComponents >= 4 {
+            return (components[0], components[1], components[2], components[3])
+        }
         
-        return (r, g, b, a)
+        return (1, 1, 1, 1)
     }
 }
 
