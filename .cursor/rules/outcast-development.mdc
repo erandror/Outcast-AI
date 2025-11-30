@@ -1,0 +1,187 @@
+---
+description: Core development guidelines for Outcast podcast app
+alwaysApply: true
+---
+
+# Outcast Development Guidelines - iOS Podcast Player
+
+A light, elegant, and performant podcast app for iOS app built with SwiftUI.
+
+
+## Quick Reference
+- **Tech**: Swift 5, SwiftUI, GRDB (SQLite), Xcode project
+- **Style**: SwiftUI-first, dark theme, async/await everywhere
+- **Architecture**: Views → Services → Database (unidirectional)
+
+## Comprehensive Guidelines
+See `.cursor/rules/outcast-development.mdc` for full development guidelines covering:
+- Architecture and file organization
+- SwiftUI patterns and state management
+- Swift Concurrency (actors, async/await, Sendable)
+- GRDB database patterns
+- Networking and error handling
+- Performance and security
+
+## Reference Apps
+- Pocket Casts: `../references/pocket-casts-ios/` (audio, background refresh patterns)
+- NetNewsWire: RSS parsing patterns
+
+
+## Architecture
+
+### Layer Separation
+- **Views**: SwiftUI views for presentation only. No business logic or networking.
+- **Services**: Stateless or actor-based services for I/O (networking, parsing, audio).
+- **Models**: GRDB records for persistence, `Parsed*` structs for intermediate data.
+- **Database**: Single `AppDatabase` for all SQLite operations via GRDB.
+
+### File Organization
+```
+Outcast/
+├── Database/        # AppDatabase + migrations
+├── Extensions/      # Swift/SwiftUI extensions
+├── Models/          # GRDB records (*Record.swift)
+├── Services/        # FeedParser, FeedRefresher, audio services
+├── Views/           # Reusable view components
+└── *.swift          # Root-level screens (ContentView, PlayerView, etc.)
+```
+
+### Data Flow
+- Unidirectional: Services → Database → Views
+- Views observe database changes or call services via `async` methods
+- Shared state lives in `AppDatabase.shared` or singleton actors
+- Never mutate models directly from views—use service methods
+
+## SwiftUI Patterns
+
+### State Management
+```swift
+@State           // Local view state (toggles, text input, etc.)
+@Binding         // Parent-owned state passed to child views
+@Environment     // System values like dismiss, colorScheme
+```
+
+### View Guidelines
+- Keep views small and focused. Extract subviews for reusability.
+- Use `task { }` for async work on appear, not `onAppear` with Task blocks.
+- Prefer `@ViewBuilder` computed properties for conditional content.
+- Always provide `#Preview` macros for views.
+
+### Design System
+- **Theme**: Dark mode first (`Color.black` backgrounds, `.white` text)
+- **Typography**: System fonts with semantic weights (`.headline`, `.caption`)
+- **Spacing**: Consistent padding (20pt horizontal, 24pt vertical sections)
+- **Corners**: 4pt for small elements, 12-16pt for cards/buttons
+
+## Swift Concurrency
+
+### Actors & Sendable
+```swift
+// Use actors for coordinated, mutable service state
+actor FeedRefresher { ... }
+
+// All model structs must be Sendable
+struct EpisodeRecord: Codable, Sendable { ... }
+
+// Use @MainActor for UI-bound code
+@MainActor func updateUI() { ... }
+```
+
+### Async/Await
+- Use `async/await` for all networking and database operations
+- Never block the main thread—use `Task { }` for fire-and-forget
+- Handle cancellation with `Task.isCancelled` or `withTaskCancellationHandler`
+- Use `TaskGroup` for concurrent operations (see `FeedRefresher.refreshAll()`)
+
+### Threading Rules
+- Database reads/writes via `AppDatabase.readAsync` / `writeAsync`
+- Parse XML/feed data off main thread
+- Capture values before async boundaries, not `self` when avoidable
+
+## Database (GRDB)
+
+### Records
+```swift
+struct PodcastRecord: Identifiable, Codable, Sendable,
+                      FetchableRecord, MutablePersistableRecord {
+    static let databaseTableName = "podcast"
+    // ...
+}
+```
+
+### Patterns
+- Define associations (`hasMany`, `belongsTo`) on record types
+- Add static query methods (`fetchByUUID`, `fetchLatest`) as extensions
+- Use `Column("name")` for type-safe column references
+- Migrations are versioned in `AppDatabase.migrator`
+
+### Best Practices
+- `eraseDatabaseOnSchemaChange = true` in DEBUG only
+- Use transactions for multi-row updates
+- Create indexes for frequently queried columns
+- Check for existence before insert to avoid duplicates
+
+## Networking
+
+### URL Requests
+```swift
+var request = URLRequest(url: url)
+request.setValue("Outcast/1.0", forHTTPHeaderField: "User-Agent")
+// Use conditional GET headers for efficiency
+request.setValue(etag, forHTTPHeaderField: "If-None-Match")
+```
+
+### Response Handling
+- Always use `HTTPURLResponse` to check status codes
+- Handle 304 Not Modified gracefully
+- Use content hashing to detect actual changes
+- Implement proper error types with `LocalizedError`
+
+### Error Types
+```swift
+enum FeedParserError: Error, LocalizedError {
+    case invalidData
+    case networkError(Error)
+    
+    var errorDescription: String? { ... }
+}
+```
+
+## Error Handling & Logging
+
+- Use typed error enums for domain-specific failures
+- Always provide `errorDescription` via `LocalizedError`
+- Present errors to users with helpful messages and retry options
+- Log errors with context, never swallow silently
+- Use `print()` for development; consider structured logging for production
+
+## Performance
+
+- Use `LazyVStack` / `LazyHStack` for long scrolling lists
+- Implement pagination for large data sets
+- Cache network responses (ETags, content hashes)
+- Avoid heavy allocations in scroll paths
+- Use `AsyncImage` with placeholders for remote artwork
+
+## Security
+
+- Store secrets in Keychain, never hardcode
+- Always use HTTPS for network requests
+- Validate URLs before use
+- Request only necessary permissions
+- Sanitize user input (feed URLs, OPML files)
+
+## Testing & Previews
+
+- Provide `#Preview` for all views with mock data
+- Use `AppDatabase(inMemory: true)` for testing
+- Create mock services for UI testing
+- Test error paths, not just happy paths
+
+## Reference Apps
+
+When implementing complex features, reference these open-source apps:
+- **Pocket Casts**: `../references/pocket-casts-ios/` (audio, background refresh)
+- **NetNewsWire**: RSS parsing patterns (MIT licensed)
+
+Adapt patterns for SwiftUI-first; don't copy UIKit code directly.
