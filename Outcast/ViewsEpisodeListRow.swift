@@ -13,7 +13,7 @@ struct EpisodeListRow: View {
     let onPlay: () -> Void
     let onTapEpisode: () -> Void
     
-    private let artworkSize: CGFloat = 72
+    private let artworkSize: CGFloat = 110
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -39,7 +39,7 @@ struct EpisodeListRow: View {
                 onTapEpisode()
             }
             
-            // Episode info - HIGH layout priority for text
+            // Episode info - full width to the right of artwork
             VStack(alignment: .leading, spacing: 4) {
                 Text(episode.podcast.title)
                     .font(.system(size: 13))
@@ -70,30 +70,32 @@ struct EpisodeListRow: View {
                             .lineLimit(1)
                     }
                 }
+                
+                // Action buttons - below publish time
+                HStack(spacing: 8) {
+                    // Play button
+                    Button {
+                        onPlay()
+                    } label: {
+                        Image(systemName: playButtonIcon)
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Download button
+                    DownloadButton(episode: episode.episode)
+                        .frame(width: 36, height: 36)
+                    
+                    Spacer()
+                }
+                .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .layoutPriority(1)
             .onTapGesture {
                 onTapEpisode()
-            }
-            
-            // Buttons - LOW layout priority, compact sizing
-            HStack(spacing: 4) {
-                // Download button
-                DownloadButton(episode: episode.episode)
-                    .frame(width: 40, height: 40)
-                
-                // Play button (separate tap target)
-                Button {
-                    onPlay()
-                } label: {
-                    Image(systemName: playButtonIcon)
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)
