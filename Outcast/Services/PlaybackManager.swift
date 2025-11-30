@@ -88,7 +88,7 @@ class PlaybackManager: ObservableObject {
         // Determine playback URL
         let playbackURL: URL
         if episode.downloadStatus == .downloaded,
-           let localPath = episode.localFilePath {
+           episode.localFilePath != nil {
             // Play from local file
             let fileExtension = await fileStorage.fileExtension(from: episode.audioMimeType, or: episode.audioURL)
             playbackURL = await fileStorage.fileURL(for: episode.uuid, fileExtension: fileExtension)
@@ -197,9 +197,11 @@ class PlaybackManager: ObservableObject {
     private func savePlaybackPosition() async throws {
         guard let episode = currentEpisode else { return }
         
+        let currentPlaybackTime = self.currentTime
+        
         try await database.writeAsync { db in
             var updatedEpisode = episode
-            updatedEpisode.playedUpTo = self.currentTime
+            updatedEpisode.playedUpTo = currentPlaybackTime
             try updatedEpisode.update(db)
         }
         

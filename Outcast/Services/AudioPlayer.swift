@@ -149,7 +149,9 @@ class AudioPlayer: ObservableObject {
         // Observe time
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            self?.currentTime = time.seconds
+            MainActor.assumeIsolated {
+                self?.currentTime = time.seconds
+            }
         }
         
         // Observe duration
@@ -163,7 +165,7 @@ class AudioPlayer: ObservableObject {
         
         // Observe status
         playerItem.publisher(for: \.status)
-            .sink { [weak self] status in
+            .sink { status in
                 if status == .failed {
                     print("Player item failed: \(playerItem.error?.localizedDescription ?? "Unknown error")")
                 }

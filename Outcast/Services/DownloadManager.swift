@@ -16,6 +16,7 @@ actor DownloadManager: NSObject {
     // MARK: - Properties
     
     private var activeDownloads: [String: DownloadTask] = [:]
+    private var urlSessionTasks: [Int: URLSessionDownloadTask] = [:]
     private var progressCallbacks: [String: @Sendable (Double) -> Void] = [:]
     
     private let fileStorage = FileStorageManager.shared
@@ -79,14 +80,6 @@ actor DownloadManager: NSObject {
             throw DownloadError.alreadyDownloaded
         }
         
-        // Create download task
-        var downloadTask = DownloadTask(
-            episodeUUID: episodeUUID,
-            url: downloadURL,
-            fileExtension: fileExtension,
-            autoDownloadStatus: autoDownloadStatus
-        )
-        
         // Update database to queued status
         try await database.writeAsync { db in
             if var episode = try EpisodeRecord.filter(Column("uuid") == episodeUUID).fetchOne(db) {
@@ -98,7 +91,6 @@ actor DownloadManager: NSObject {
         }
         
         // Check for resume data
-        let tempURL = await fileStorage.tempFileURL(for: episodeUUID)
         let session = allowCellular ? cellularSession : wifiSession
         
         let urlSessionTask: URLSessionDownloadTask
@@ -110,8 +102,17 @@ actor DownloadManager: NSObject {
             urlSessionTask = session.downloadTask(with: request)
         }
         
-        downloadTask.urlSessionTask = urlSessionTask
+        // Create download task with taskIdentifier
+        let downloadTask = DownloadTask(
+            episodeUUID: episodeUUID,
+            url: downloadURL,
+            fileExtension: fileExtension,
+            taskIdentifier: urlSessionTask.taskIdentifier,
+            autoDownloadStatus: autoDownloadStatus
+        )
+        
         activeDownloads[episodeUUID] = downloadTask
+        urlSessionTasks[urlSessionTask.taskIdentifier] = urlSessionTask
         
         if let progressCallback = progressCallback {
             progressCallbacks[episodeUUID] = progressCallback
@@ -135,14 +136,11 @@ actor DownloadManager: NSObject {
         }
         
         // Cancel the URLSession task and save resume data
-        if let urlSessionTask = downloadTask.urlSessionTask {
-            urlSessionTask.cancel { resumeData in
-                Task {
-                    if let data = resumeData {
-                        try? await self.fileStorage.saveResumeData(data, for: episodeUUID)
-                    }
-                }
+        if let urlSessionTask = urlSessionTasks[downloadTask.taskIdentifier] {
+            if let resumeData = await urlSessionTask.cancelByProducingResumeData() {
+                try? await self.fileStorage.saveResumeData(resumeData, for: episodeUUID)
             }
+            urlSessionTasks.removeValue(forKey: downloadTask.taskIdentifier)
         }
         
         activeDownloads.removeValue(forKey: episodeUUID)
@@ -256,6 +254,7 @@ actor DownloadManager: NSObject {
                 print("Failed to update episode after download error: \(error)")
             }
             
+            urlSessionTasks.removeValue(forKey: downloadTask.taskIdentifier)
             activeDownloads.removeValue(forKey: episodeUUID)
             progressCallbacks.removeValue(forKey: episodeUUID)
             return
@@ -307,6 +306,7 @@ actor DownloadManager: NSObject {
             }
         }
         
+        urlSessionTasks.removeValue(forKey: downloadTask.taskIdentifier)
         activeDownloads.removeValue(forKey: episodeUUID)
         progressCallbacks.removeValue(forKey: episodeUUID)
     }

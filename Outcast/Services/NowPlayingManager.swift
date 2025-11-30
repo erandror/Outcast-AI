@@ -26,7 +26,7 @@ class NowPlayingManager {
     private func setupRemoteCommands() {
         // Play command
         commandCenter.playCommand.isEnabled = true
-        commandCenter.playCommand.addTarget { [weak self] _ in
+        commandCenter.playCommand.addTarget { _ in
             Task { @MainActor in
                 try? await PlaybackManager.shared.play()
             }
@@ -35,14 +35,14 @@ class NowPlayingManager {
         
         // Pause command
         commandCenter.pauseCommand.isEnabled = true
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
+        commandCenter.pauseCommand.addTarget { _ in
             PlaybackManager.shared.pause()
             return .success
         }
         
         // Toggle play/pause
         commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+        commandCenter.togglePlayPauseCommand.addTarget { _ in
             PlaybackManager.shared.togglePlayPause()
             return .success
         }
@@ -50,7 +50,7 @@ class NowPlayingManager {
         // Skip forward
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
-        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+        commandCenter.skipForwardCommand.addTarget { event in
             Task { @MainActor in
                 if let skipEvent = event as? MPSkipIntervalCommandEvent {
                     await PlaybackManager.shared.skipForward(by: skipEvent.interval)
@@ -64,7 +64,7 @@ class NowPlayingManager {
         // Skip backward
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
-        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+        commandCenter.skipBackwardCommand.addTarget { event in
             Task { @MainActor in
                 if let skipEvent = event as? MPSkipIntervalCommandEvent {
                     await PlaybackManager.shared.skipBackward(by: skipEvent.interval)
@@ -77,7 +77,7 @@ class NowPlayingManager {
         
         // Seek command
         commandCenter.changePlaybackPositionCommand.isEnabled = true
-        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+        commandCenter.changePlaybackPositionCommand.addTarget { event in
             Task { @MainActor in
                 if let seekEvent = event as? MPChangePlaybackPositionCommandEvent {
                     await PlaybackManager.shared.seek(to: seekEvent.positionTime)
@@ -89,7 +89,7 @@ class NowPlayingManager {
         // Playback rate
         commandCenter.changePlaybackRateCommand.isEnabled = true
         commandCenter.changePlaybackRateCommand.supportedPlaybackRates = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
-        commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
+        commandCenter.changePlaybackRateCommand.addTarget { event in
             if let rateEvent = event as? MPChangePlaybackRateCommandEvent {
                 PlaybackManager.shared.setPlaybackRate(rateEvent.playbackRate)
                 return .success

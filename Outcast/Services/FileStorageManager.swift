@@ -15,49 +15,56 @@ actor FileStorageManager {
     // MARK: - Directory URLs
     
     /// Main podcasts directory for permanent downloads
-    private(set) var podcastsDirectory: URL!
+    nonisolated let podcastsDirectory: URL
     
     /// Temporary directory for in-progress downloads
-    private(set) var tempDownloadsDirectory: URL!
+    nonisolated let tempDownloadsDirectory: URL
     
     /// Optional streaming cache directory
-    private(set) var streamingCacheDirectory: URL!
+    nonisolated let streamingCacheDirectory: URL
     
     // MARK: - Initialization
     
     private init() {
-        setupDirectories()
-    }
-    
-    /// Set up the directory structure
-    private func setupDirectories() {
+        let fileManager = FileManager.default
+        
+        // Get base directories
+        guard let documentsURL = try? fileManager.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ),
+        let cachesURL = try? fileManager.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ) else {
+            fatalError("Failed to get system directories")
+        }
+        
+        // Set up directory URLs
+        self.podcastsDirectory = documentsURL.appendingPathComponent("podcasts", isDirectory: true)
+        self.tempDownloadsDirectory = cachesURL.appendingPathComponent("temp_downloads", isDirectory: true)
+        self.streamingCacheDirectory = documentsURL.appendingPathComponent("streaming_cache", isDirectory: true)
+        
+        // Create directories synchronously
         do {
-            let fileManager = FileManager.default
-            let documentsURL = try fileManager.url(
-                for: .documentDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
+            try fileManager.createDirectory(at: podcastsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: tempDownloadsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: streamingCacheDirectory, withIntermediateDirectories: true)
             
-            // Create podcasts directory
-            podcastsDirectory = documentsURL.appendingPathComponent("podcasts", isDirectory: true)
-            try createDirectoryIfNeeded(at: podcastsDirectory, excludeFromBackup: true)
+            // Set to exclude from backup
+            var podcastsResourceURL = podcastsDirectory
+            var podcastsResourceValues = URLResourceValues()
+            podcastsResourceValues.isExcludedFromBackup = true
+            try podcastsResourceURL.setResourceValues(podcastsResourceValues)
             
-            // Create temp downloads directory in Caches
-            let cachesURL = try fileManager.url(
-                for: .cachesDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true
-            )
-            tempDownloadsDirectory = cachesURL.appendingPathComponent("temp_downloads", isDirectory: true)
-            try createDirectoryIfNeeded(at: tempDownloadsDirectory, excludeFromBackup: false)
-            
-            // Create streaming cache directory
-            streamingCacheDirectory = documentsURL.appendingPathComponent("streaming_cache", isDirectory: true)
-            try createDirectoryIfNeeded(at: streamingCacheDirectory, excludeFromBackup: true)
-            
+            var streamingResourceURL = streamingCacheDirectory
+            var streamingResourceValues = URLResourceValues()
+            streamingResourceValues.isExcludedFromBackup = true
+            try streamingResourceURL.setResourceValues(streamingResourceValues)
         } catch {
             fatalError("Failed to setup file storage directories: \(error)")
         }
@@ -178,7 +185,8 @@ actor FileStorageManager {
             return 0
         }
         
-        for case let fileURL as URL in enumerator {
+        let allURLs = enumerator.allObjects.compactMap { $0 as? URL }
+        for fileURL in allURLs {
             guard let resourceValues = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
                   let fileSize = resourceValues.fileSize else {
                 continue
