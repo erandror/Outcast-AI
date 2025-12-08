@@ -109,4 +109,25 @@ enum ForYouFilter: String, CaseIterable, Sendable {
     var requiresEpisodeAuthor: Bool {
         self == .conversations
     }
+    
+    /// Mood tag name for tag-based filtering
+    /// Returns the corresponding mood tag name for filters that use system tags
+    var moodTagName: String? {
+        switch self {
+        case .friendly:
+            return "Warm"
+        case .funny:
+            return "Funny"
+        case .interesting:
+            return "Interesting"
+        case .captivating:
+            return "Captivating"
+        case .conversations:
+            return "Conversations"
+        case .timely:
+            return "Timely"
+        case .upNext, .latest, .short:
+            return nil
+        }
+    }
 }

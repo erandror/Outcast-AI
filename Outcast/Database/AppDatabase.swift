@@ -171,6 +171,55 @@ final class AppDatabase: Sendable {
             }
         }
         
+        // Migration v5: Add system tags and episode tagging
+        migrator.registerMigration("v5_system_tags") { db in
+            // Create system_tag table
+            try db.create(table: "system_tag") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("uuid", .text).notNull().unique()
+                t.column("type", .text).notNull()  // "mood" or "topic"
+                t.column("name", .text).notNull()
+                t.column("emoji", .text)
+                t.column("displayOrder", .integer).notNull().defaults(to: 0)
+            }
+            
+            // Create episode_tag junction table
+            try db.create(table: "episode_tag") { t in
+                t.column("episodeId", .integer).notNull()
+                    .references("episode", onDelete: .cascade)
+                t.column("tagId", .integer).notNull()
+                    .references("system_tag", onDelete: .cascade)
+                t.column("appliedAt", .datetime).notNull()
+                t.primaryKey(["episodeId", "tagId"])
+            }
+            
+            // Create indexes for efficient queries
+            try db.create(index: "episode_tag_tagId", on: "episode_tag", columns: ["tagId"])
+            try db.create(index: "system_tag_type_name", on: "system_tag", columns: ["type", "name"])
+            
+            // Seed default mood tags
+            for (name, emoji, order) in SystemTagRecord.defaultMoodTags {
+                var tag = SystemTagRecord(
+                    type: .mood,
+                    name: name,
+                    emoji: emoji,
+                    displayOrder: order
+                )
+                try tag.insert(db)
+            }
+            
+            // Seed default topic tags
+            for (name, emoji, order) in SystemTagRecord.defaultTopicTags {
+                var tag = SystemTagRecord(
+                    type: .topic,
+                    name: name,
+                    emoji: emoji,
+                    displayOrder: order
+                )
+                try tag.insert(db)
+            }
+        }
+        
         return migrator
     }
 }

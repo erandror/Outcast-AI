@@ -452,6 +452,12 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     }
     
     private static func fetchByKeywordsAndCategories(filter: ForYouFilter, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+        // Check if this filter uses mood tags
+        if let moodTagName = filter.moodTagName {
+            return try fetchByMoodTag(moodTagName: moodTagName, limit: limit, db: db)
+        }
+        
+        // Otherwise, use the legacy keyword/category matching
         var conditions: [String] = []
         var arguments: [DatabaseValueConvertible] = []
         
@@ -544,6 +550,27 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         
         let statement = try db.makeStatement(sql: sql)
         let rows = try Row.fetchAll(statement, arguments: StatementArguments(arguments))
+        
+        // Use the helper function to parse each row
+        return try rows.map { try parseEpisodeWithPodcast(from: $0) }
+    }
+    
+    // MARK: - Mood Tag Based Filtering
+    
+    private static func fetchByMoodTag(moodTagName: String, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+        let sql = """
+            SELECT episode.*, podcast.*
+            FROM episode
+            INNER JOIN podcast ON episode.podcastId = podcast.id
+            INNER JOIN episode_tag ON episode.id = episode_tag.episodeId
+            INNER JOIN system_tag ON episode_tag.tagId = system_tag.id
+            WHERE system_tag.type = 'mood' AND system_tag.name = ?
+            ORDER BY episode.publishedDate DESC
+            LIMIT ?
+            """
+        
+        let statement = try db.makeStatement(sql: sql)
+        let rows = try Row.fetchAll(statement, arguments: StatementArguments([moodTagName, limit]))
         
         // Use the helper function to parse each row
         return try rows.map { try parseEpisodeWithPodcast(from: $0) }
