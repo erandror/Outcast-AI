@@ -111,8 +111,8 @@ struct ShowHeaderView: View {
     
     @ViewBuilder
     private var actionButtons: some View {
-        if #available(iOS 18.0, *) {
-            // Use Liquid Glass on iOS 18+
+        if #available(iOS 26.0, *) {
+            // Use Liquid Glass on iOS 26+
             glassActionButtons
         } else {
             // Fallback for older iOS versions
@@ -120,7 +120,7 @@ struct ShowHeaderView: View {
         }
     }
     
-    @available(iOS 18.0, *)
+    @available(iOS 26.0, *)
     private var glassActionButtons: some View {
         GlassEffectContainer(spacing: 16) {
             HStack(spacing: 16) {

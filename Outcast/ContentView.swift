@@ -9,6 +9,12 @@ import SwiftUI
 import GRDB
 
 struct ContentView: View {
+    private enum MainTab {
+        case listen
+        case history
+        case profile
+    }
+    
     @State private var episodes: [EpisodeWithPodcast] = []
     @State private var selectedEpisodeForPlayer: EpisodeWithPodcast?
     @State private var selectedEpisodeForDetail: EpisodeWithPodcast?
@@ -19,70 +25,26 @@ struct ContentView: View {
     @State private var showDownloads = false
     @State private var selectedFilter: ForYouFilter = .latest
     @State private var importProgress: ImportCoordinator.ImportProgress?
+    @State private var selectedTab: MainTab = .listen
     @ObservedObject private var playbackManager = PlaybackManager.shared
 
     var body: some View {
         NavigationStack {
             ZStack {
-                // Stark black background
                 Color.black
                     .ignoresSafeArea()
                 
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Header
-                        headerView
-                        
-                        // Import progress banner (if importing)
-                        if let progress = importProgress {
-                            ImportProgressBanner(progress: progress)
-                        }
-                        
-                        // Filter bar
-                        ForYouFilterBar(selectedFilter: $selectedFilter)
-                        
-                        // Episodes list or empty state
-                        if episodes.isEmpty && !isRefreshing {
-                            // Empty state
-                            emptyStateView
-                                .padding(.top, 60)
-                        } else {
-                            LazyVStack(spacing: 0) {
-                                ForEach(episodes) { episode in
-                                    EpisodeListRow(
-                                        episode: episode,
-                                        onPlay: {
-                                            selectedEpisodeForPlayer = episode
-                                            showPlayer = true
-                                        },
-                                        onTapEpisode: {
-                                            selectedEpisodeForDetail = episode
-                                        }
-                                    )
-                                    
-                                    // Divider
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.1))
-                                        .frame(height: 1)
-                                        .padding(.leading, 20)
-                                }
-                            }
-                        }
-                    }
+                VStack(spacing: 0) {
+                    // Persistent top area
+                    topBarArea
+                    
+                    // Tab content fills remaining space
+                    tabContent
+                    
+                    // Bottom overlay: mini player (when active) + nav
+                    bottomOverlay
                 }
-                .refreshable {
-                    await refreshFeeds()
-                }
-                .safeAreaInset(edge: .bottom) {
-                    MiniPlayer()
-                }
-                
-                // Loading overlay
-                if isRefreshing && episodes.isEmpty {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(1.5)
-                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .toolbar(.hidden, for: .navigationBar)
         }
@@ -132,6 +94,19 @@ struct ContentView: View {
         }
     }
     
+    private var topBarArea: some View {
+        VStack(spacing: 0) {
+            headerView
+            
+            if let progress = importProgress {
+                ImportProgressBanner(progress: progress)
+            }
+            
+            ForYouFilterBar(selectedFilter: $selectedFilter)
+        }
+        .background(Color.black)
+    }
+    
     private var headerView: some View {
         HStack {
             Text("For You")
@@ -157,8 +132,57 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 60)
-        .padding(.bottom, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+    }
+    
+    private var tabContent: some View {
+        Group {
+            switch selectedTab {
+            case .listen:
+                listenContent
+            case .history:
+                placeholderView(title: "History", message: "Your recently played episodes will appear here.")
+            case .profile:
+                placeholderView(title: "Profile", message: "Profile settings and preferences coming soon.")
+            }
+        }
+    }
+    
+    private var listenContent: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                if episodes.isEmpty && !isRefreshing {
+                    emptyStateView
+                        .padding(.top, 60)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(episodes) { episode in
+                            EpisodeListRow(
+                                episode: episode,
+                                onPlay: {
+                                    selectedEpisodeForPlayer = episode
+                                    showPlayer = true
+                                },
+                                onTapEpisode: {
+                                    selectedEpisodeForDetail = episode
+                                }
+                            )
+                            
+                            // Divider
+                            Rectangle()
+                                .fill(Color.white.opacity(0.1))
+                                .frame(height: 1)
+                                .padding(.leading, 20)
+                        }
+                    }
+                }
+            }
+        }
+        .refreshable {
+            await refreshFeeds()
+        }
     }
     
     private var emptyStateView: some View {
@@ -194,6 +218,80 @@ struct ContentView: View {
             }
             .padding(.top, 8)
         }
+    }
+    
+    private func placeholderView(title: String, message: String) -> some View {
+        VStack(spacing: 12) {
+            Text(title)
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.white)
+            
+            Text(message)
+                .font(.body)
+                .foregroundStyle(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.top, 40)
+    }
+    
+    private var bottomOverlay: some View {
+        VStack(spacing: 0) {
+            MiniPlayer()
+            
+            Divider()
+                .background(Color.white.opacity(0.1))
+            
+            bottomNavBar
+        }
+        .background(Color.black)
+    }
+    
+    private var bottomNavBar: some View {
+        HStack(spacing: 32) {
+            navButton(
+                icon: "play.circle",
+                label: "Listen",
+                tab: .listen
+            )
+            
+            navButton(
+                icon: "clock.arrow.circlepath",
+                label: "History",
+                tab: .history
+            )
+            
+            navButton(
+                icon: "person.crop.circle",
+                label: "Profile",
+                tab: .profile
+            )
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+    }
+    
+    private func navButton(icon: String, label: String, tab: MainTab) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(selectedTab == tab ? Color.white : Color.white.opacity(0.6))
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(selectedTab == tab ? Color.white.opacity(0.08) : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
     }
     
     private func loadEpisodes() async {
