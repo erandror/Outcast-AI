@@ -17,12 +17,24 @@ struct OutcastApp: App {
         
         // Register background tasks
         registerBackgroundTasks()
+        
+        // Start episode tagging background processor
+        startEpisodeTagger()
     }
     
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .preferredColorScheme(.dark)
+        }
+    }
+    
+    // MARK: - Episode Tagging
+    
+    private func startEpisodeTagger() {
+        Task {
+            let tagger = EpisodeTagger.shared
+            await tagger.startBackgroundProcessing()
         }
     }
     

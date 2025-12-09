@@ -75,6 +75,9 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
     var downloadError: String?
     var autoDownloadStatus: AutoDownloadStatus
     
+    // AI tagging
+    var needsTagging: Bool
+    
     init(
         id: Int64? = nil,
         uuid: String = UUID().uuidString,
@@ -108,7 +111,8 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         downloadedFileSize: Int64? = nil,
         downloadTaskIdentifier: String? = nil,
         downloadError: String? = nil,
-        autoDownloadStatus: AutoDownloadStatus = .notSpecified
+        autoDownloadStatus: AutoDownloadStatus = .notSpecified,
+        needsTagging: Bool = true
     ) {
         self.id = id
         self.uuid = uuid
@@ -143,6 +147,7 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         self.downloadTaskIdentifier = downloadTaskIdentifier
         self.downloadError = downloadError
         self.autoDownloadStatus = autoDownloadStatus
+        self.needsTagging = needsTagging
     }
 }
 
@@ -262,6 +267,21 @@ extension EpisodeRecord {
     /// Update download progress
     mutating func updateDownloadProgress(_ progress: Double, db: Database) throws {
         downloadProgress = progress
+        try update(db)
+    }
+    
+    /// Fetch episodes that need AI tagging
+    static func fetchNeedingTagging(limit: Int, db: Database) throws -> [EpisodeRecord] {
+        try EpisodeRecord
+            .filter(Column("needsTagging") == true)
+            .order(Column("publishedDate").desc)
+            .limit(limit)
+            .fetchAll(db)
+    }
+    
+    /// Mark episode as tagged (no longer needs tagging)
+    mutating func markTaggingComplete(db: Database) throws {
+        needsTagging = false
         try update(db)
     }
 }

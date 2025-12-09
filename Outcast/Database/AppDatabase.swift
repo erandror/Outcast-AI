@@ -220,6 +220,14 @@ final class AppDatabase: Sendable {
             }
         }
         
+        // Migration v6: Add episode tagging queue
+        migrator.registerMigration("v6_episode_tagging_queue") { db in
+            try db.alter(table: "episode") { t in
+                t.add(column: "needsTagging", .boolean).notNull().defaults(to: true)
+            }
+            try db.create(index: "episode_needsTagging", on: "episode", columns: ["needsTagging"])
+        }
+        
         return migrator
     }
 }

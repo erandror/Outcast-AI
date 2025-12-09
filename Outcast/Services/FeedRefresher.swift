@@ -124,7 +124,7 @@ actor FeedRefresher {
         let parsedFeed = parseResult.podcast
         
         // Update podcast and save new episodes
-        let newEpisodeCount = try await database.writeAsync { db -> Int in
+        let (newEpisodeCount, newEpisodeIds) = try await database.writeAsync { db -> (Int, [Int64]) in
             // Update podcast metadata
             var updatedPodcast = podcast
             updatedPodcast.title = parsedFeed.title
@@ -153,7 +153,8 @@ actor FeedRefresher {
             
             // Insert new episodes
             var newCount = 0
-            guard let podcastId = updatedPodcast.id else { return 0 }
+            var episodeIds: [Int64] = []
+            guard let podcastId = updatedPodcast.id else { return (0, []) }
             
             for parsedEpisode in parsedFeed.episodes {
                 // Skip if episode already exists
@@ -185,10 +186,18 @@ actor FeedRefresher {
                 )
                 
                 try episode.insert(db)
+                if let episodeId = episode.id {
+                    episodeIds.append(episodeId)
+                }
                 newCount += 1
             }
             
-            return newCount
+            return (newCount, episodeIds)
+        }
+        
+        // Queue episodes for AI tagging
+        if !newEpisodeIds.isEmpty {
+            await EpisodeTagger.shared.queueForTagging(episodeIds: newEpisodeIds)
         }
         
         return newEpisodeCount
@@ -248,7 +257,7 @@ actor FeedRefresher {
         let parsedFeed = parseResult.podcast
         
         // Create podcast with first 3 episodes
-        let podcast = try await database.writeAsync { db -> PodcastRecord in
+        let (podcast, episodeIds) = try await database.writeAsync { db -> (PodcastRecord, [Int64]) in
             var podcast = PodcastRecord(
                 feedURL: feedURL,
                 title: parsedFeed.title,
@@ -281,6 +290,7 @@ actor FeedRefresher {
             }
             
             // Insert first 3 episodes
+            var episodeIds: [Int64] = []
             for parsedEpisode in parsedFeed.episodes {
                 var episode = EpisodeRecord(
                     podcastId: podcastId,
@@ -305,9 +315,17 @@ actor FeedRefresher {
                     transcripts: parsedEpisode.transcripts
                 )
                 try episode.insert(db)
+                if let episodeId = episode.id {
+                    episodeIds.append(episodeId)
+                }
             }
             
-            return podcast
+            return (podcast, episodeIds)
+        }
+        
+        // Queue episodes for AI tagging
+        if !episodeIds.isEmpty {
+            await EpisodeTagger.shared.queueForTagging(episodeIds: episodeIds)
         }
         
         return (podcast, data, httpResponse, parseResult.hasMoreEpisodes)
@@ -341,7 +359,8 @@ actor FeedRefresher {
                 let batchEnd = min(batchStart + batchSize, newEpisodes.count)
                 let batch = Array(newEpisodes[batchStart..<batchEnd])
                 
-                try await database.writeAsync { db in
+                let batchEpisodeIds = try await database.writeAsync { db -> [Int64] in
+                    var episodeIds: [Int64] = []
                     for parsedEpisode in batch {
                         // Double-check episode doesn't exist (race condition safety)
                         if try EpisodeRecord.exists(guid: parsedEpisode.guid, podcastId: podcastId, db: db) {
@@ -371,7 +390,16 @@ actor FeedRefresher {
                             transcripts: parsedEpisode.transcripts
                         )
                         try episode.insert(db)
+                        if let episodeId = episode.id {
+                            episodeIds.append(episodeId)
+                        }
                     }
+                    return episodeIds
+                }
+                
+                // Queue episodes for AI tagging
+                if !batchEpisodeIds.isEmpty {
+                    await EpisodeTagger.shared.queueForTagging(episodeIds: batchEpisodeIds)
                 }
             }
             
@@ -437,7 +465,7 @@ actor FeedRefresher {
         let parsedFeed = parseResult.podcast
         
         // Update podcast and insert first 3 episodes
-        let updatedPodcast = try await database.writeAsync { db -> PodcastRecord in
+        let (updatedPodcast, episodeIds) = try await database.writeAsync { db -> (PodcastRecord, [Int64]) in
             var podcast = podcast
             podcast.title = parsedFeed.title
             podcast.author = parsedFeed.author
@@ -469,6 +497,7 @@ actor FeedRefresher {
             }
             
             // Insert first 3 episodes
+            var episodeIds: [Int64] = []
             for parsedEpisode in parsedFeed.episodes {
                 // Skip if episode already exists
                 if try EpisodeRecord.exists(guid: parsedEpisode.guid, podcastId: podcastId, db: db) {
@@ -498,9 +527,17 @@ actor FeedRefresher {
                     transcripts: parsedEpisode.transcripts
                 )
                 try episode.insert(db)
+                if let episodeId = episode.id {
+                    episodeIds.append(episodeId)
+                }
             }
             
-            return podcast
+            return (podcast, episodeIds)
+        }
+        
+        // Queue episodes for AI tagging
+        if !episodeIds.isEmpty {
+            await EpisodeTagger.shared.queueForTagging(episodeIds: episodeIds)
         }
         
         return (updatedPodcast, data, httpResponse, parseResult.hasMoreEpisodes)
@@ -534,7 +571,8 @@ actor FeedRefresher {
                 let batchEnd = min(batchStart + batchSize, newEpisodes.count)
                 let batch = Array(newEpisodes[batchStart..<batchEnd])
                 
-                try await database.writeAsync { db in
+                let batchEpisodeIds = try await database.writeAsync { db -> [Int64] in
+                    var episodeIds: [Int64] = []
                     for parsedEpisode in batch {
                         // Double-check episode doesn't exist (race condition safety)
                         if try EpisodeRecord.exists(guid: parsedEpisode.guid, podcastId: podcastId, db: db) {
@@ -564,7 +602,16 @@ actor FeedRefresher {
                             transcripts: parsedEpisode.transcripts
                         )
                         try episode.insert(db)
+                        if let episodeId = episode.id {
+                            episodeIds.append(episodeId)
+                        }
                     }
+                    return episodeIds
+                }
+                
+                // Queue episodes for AI tagging
+                if !batchEpisodeIds.isEmpty {
+                    await EpisodeTagger.shared.queueForTagging(episodeIds: batchEpisodeIds)
                 }
             }
             
