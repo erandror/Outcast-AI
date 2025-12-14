@@ -110,6 +110,8 @@ extension EpisodeTagRecord {
     
     /// Replace all tags for an episode with a new set
     static func setTags(episodeId: Int64, tagIds: [Int64], db: Database) throws {
+        print("[TAGGER] 🔍 setTags called for episodeId=\(episodeId) with \(tagIds.count) tags: \(tagIds)")
+        
         // Remove all existing tags
         try removeAllTags(episodeId: episodeId, db: db)
         
@@ -118,6 +120,7 @@ extension EpisodeTagRecord {
         for tagId in tagIds {
             var record = EpisodeTagRecord(episodeId: episodeId, tagId: tagId, appliedAt: now)
             try record.insert(db)
+            print("[TAGGER] ✅ Inserted tag \(tagId) for episode \(episodeId)")
         }
     }
     

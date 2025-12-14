@@ -64,15 +64,17 @@ actor EpisodeTagger {
     @available(iOS 26.0, macOS 26.0, *)
     private func checkModelAvailability() async -> Bool {
         #if canImport(FoundationModels)
+        print("[TAGGER] 🔍 Checking model availability...")
         let availability = SystemLanguageModel.default.availability
+        print("[TAGGER] 🔍 Model availability result: \(availability)")
         switch availability {
         case .available:
             return true
         case .unavailable:
-            print("📝 Apple Intelligence not available on this device")
+            print("[TAGGER] ⚠️ Apple Intelligence not available on this device")
             return false
         @unknown default:
-            print("📝 Unknown model availability status")
+            print("[TAGGER] ⚠️ Unknown model availability status")
             return false
         }
         #else
@@ -84,9 +86,12 @@ actor EpisodeTagger {
     func startBackgroundProcessing() {
         guard backgroundTask == nil else { return }
         
+        print("[TAGGER] 🚀 Starting background processing...")
+        print("[TAGGER] 🚀 OS version supported: \(isOSVersionSupported)")
+        
         // Only start if OS version supports FoundationModels
         guard isOSVersionSupported else {
-            print("📝 AI tagging not available on this device (requires iOS 26+)")
+            print("[TAGGER] ⚠️ AI tagging not available on this device (requires iOS 26+)")
             return
         }
         
@@ -102,7 +107,7 @@ actor EpisodeTagger {
             }
         }
         
-        print("🤖 Episode AI tagger started")
+        print("[TAGGER] ✅ Episode AI tagger started successfully")
     }
     
     /// Stop the background processing loop
@@ -117,16 +122,22 @@ actor EpisodeTagger {
         // This function is just a trigger to start processing if needed
         guard !episodeIds.isEmpty else { return }
         
-        print("📝 Queued \(episodeIds.count) episode(s) for AI tagging")
+        print("[TAGGER] 📝 Queued \(episodeIds.count) episode(s) for AI tagging")
         
         // Only process if OS version supports AI
-        guard isOSVersionSupported else { return }
+        guard isOSVersionSupported else {
+            print("[TAGGER] ⚠️ Cannot queue episodes - OS version not supported")
+            return
+        }
         
         // If not already processing, start a processing cycle
         if !isProcessing {
+            print("[TAGGER] 🚀 Triggering immediate processing cycle")
             Task.detached(priority: .utility) { [weak self] in
                 await self?.processQueue()
             }
+        } else {
+            print("[TAGGER] 🔍 Already processing, new episodes will be picked up in next cycle")
         }
     }
     
@@ -153,7 +164,7 @@ actor EpisodeTagger {
         
         // Check if model is actually available on this device
         guard await checkModelAvailability() else {
-            print("⚠️ SystemLanguageModel not available, skipping tagging queue")
+            print("[TAGGER] ⚠️ SystemLanguageModel not available, skipping tagging queue")
             return
         }
         
@@ -163,11 +174,13 @@ actor EpisodeTagger {
                 try EpisodeRecord.fetchNeedingTagging(limit: 20, db: db)
             }
             
+            print("[TAGGER] 📊 Episodes needing tagging: \(episodes.count)")
+            
             guard !episodes.isEmpty else {
                 return
             }
             
-            print("🤖 Processing \(episodes.count) episode(s) for AI tagging...")
+            print("[TAGGER] 🤖 Processing \(episodes.count) episode(s) for AI tagging...")
             
             // Fetch all system tags once
             let (moodTags, topicTags) = try await database.readAsync { db in
@@ -175,6 +188,10 @@ actor EpisodeTagger {
                 let topic = try SystemTagRecord.fetchTopicTags(db: db)
                 return (mood, topic)
             }
+            
+            print("[TAGGER] 📊 Mood tags loaded: \(moodTags.count)")
+            print("[TAGGER] 📊 Topic tags loaded: \(topicTags.count)")
+            print("[TAGGER] 🔍 Available mood tags: \(moodTags.map { $0.name })")
             
             // Define session instructions (used for each new session)
             let instructions = """
@@ -196,7 +213,7 @@ actor EpisodeTagger {
                     guard let podcast = try await database.readAsync({ db in
                         try PodcastRecord.fetchOne(db, id: episode.podcastId)
                     }) else {
-                        print("⚠️ Skipping episode \(episode.id ?? 0): podcast not found")
+                        print("[TAGGER] ⚠️ Skipping episode \(episode.id ?? 0): podcast not found")
                         // Mark as complete to avoid retrying
                         try? await markEpisodeTagged(episode)
                         continue
@@ -225,25 +242,25 @@ actor EpisodeTagger {
                 } catch let error as LanguageModelSession.GenerationError {
                     switch error {
                     case .exceededContextWindowSize:
-                        print("⚠️ Episode description too long, skipping: \(episode.id ?? 0)")
+                        print("[TAGGER] ⚠️ Episode description too long, skipping: \(episode.id ?? 0)")
                     default:
-                        print("⚠️ Generation error for episode \(episode.id ?? 0): \(error)")
+                        print("[TAGGER] ⚠️ Generation error for episode \(episode.id ?? 0): \(error)")
                     }
                     // Mark as complete to avoid retrying indefinitely
                     try? await markEpisodeTagged(episode)
                 } catch {
-                    print("⚠️ Failed to tag episode \(episode.id ?? 0): \(error)")
+                    print("[TAGGER] ⚠️ Failed to tag episode \(episode.id ?? 0): \(error)")
                     // Mark as complete anyway to avoid retrying indefinitely
                     try? await markEpisodeTagged(episode)
                 }
             }
             
             if successCount > 0 {
-                print("✅ Successfully tagged \(successCount) episode(s)")
+                print("[TAGGER] ✅ Successfully tagged \(successCount) episode(s)")
             }
             
         } catch {
-            print("❌ Error processing tagging queue: \(error)")
+            print("[TAGGER] ❌ Error processing tagging queue: \(error)")
         }
         #endif
     }
@@ -287,6 +304,14 @@ actor EpisodeTagger {
         let response = try await session.respond(to: prompt, generating: TagClassification.self)
         let classification = response.content
         
+        guard let episodeId = episode.id else {
+            throw TaggingError.missingEpisodeId
+        }
+        
+        print("[TAGGER] 🔍 Episode '\(episode.title)' (ID: \(episodeId))")
+        print("[TAGGER] 🔍 AI returned moods: \(classification.mood)")
+        print("[TAGGER] 🔍 AI returned topics: \(classification.topic)")
+        
         // Validate tags against available tags
         let validMoodTags = classification.mood.filter { tag in
             moodTags.contains(where: { $0.name.lowercased() == tag.lowercased() })
@@ -296,9 +321,8 @@ actor EpisodeTagger {
             topicTags.contains(where: { $0.name.lowercased() == tag.lowercased() })
         }
         
-        guard let episodeId = episode.id else {
-            throw TaggingError.missingEpisodeId
-        }
+        print("[TAGGER] 🔍 Valid moods after filter: \(validMoodTags)")
+        print("[TAGGER] 🔍 Valid topics after filter: \(validTopicTags)")
         
         return TaggingResult(
             episodeId: episodeId,
@@ -316,37 +340,79 @@ actor EpisodeTagger {
             var ep = episode
             try ep.markTaggingComplete(db: db)
         }
+        print("[TAGGER] ✅ Marked episode \(episode.id ?? 0) as tagged (needsTagging=false)")
+    }
+    
+    /// Print diagnostic information about the tagger state and database
+    func printDiagnostics() async {
+        print("[TAGGER] ========== DIAGNOSTICS ==========")
+        print("[TAGGER] 🔍 isOSVersionSupported: \(isOSVersionSupported)")
+        print("[TAGGER] 🔍 isProcessing: \(isProcessing)")
+        print("[TAGGER] 🔍 backgroundTask active: \(backgroundTask != nil)")
+        
+        do {
+            let stats = try await database.readAsync { db in
+                let totalEpisodes = try EpisodeRecord.fetchCount(db)
+                let needsTagging = try EpisodeRecord
+                    .filter(Column("needsTagging") == true)
+                    .fetchCount(db)
+                let moodTags = try SystemTagRecord.fetchMoodTags(db: db)
+                let episodeTags = try EpisodeTagRecord.fetchCount(db)
+                return (totalEpisodes, needsTagging, moodTags.count, episodeTags)
+            }
+            print("[TAGGER] 📊 Total episodes: \(stats.0)")
+            print("[TAGGER] 📊 Episodes needing tagging: \(stats.1)")
+            print("[TAGGER] 📊 System mood tags: \(stats.2)")
+            print("[TAGGER] 📊 Episode-tag associations: \(stats.3)")
+        } catch {
+            print("[TAGGER] ❌ Diagnostics failed: \(error)")
+        }
+        print("[TAGGER] ====================================")
     }
     
     /// Apply tags to an episode in the database
     private func applyTags(result: TaggingResult) async throws {
+        print("[TAGGER] 🔍 Applying tags to episode ID \(result.episodeId)")
+        
         try await database.writeAsync { db in
             // Get the episode
             guard var episode = try EpisodeRecord.fetchOne(db, id: result.episodeId) else {
+                print("[TAGGER] ⚠️ Episode \(result.episodeId) not found in database")
                 return
             }
             
-            // Find tag IDs for the mood tags
+            // Find tag IDs for the mood tags (case-insensitive lookup)
             var tagIds: [Int64] = []
             
             for tagName in result.moodTagNames {
-                if let tag = try SystemTagRecord.fetchByName(tagName, type: .mood, db: db),
-                   let tagId = tag.id {
+                let tag = try SystemTagRecord
+                    .filter(sql: "LOWER(name) = LOWER(?) AND type = ?", arguments: [tagName, SystemTagType.mood.rawValue])
+                    .fetchOne(db)
+                
+                if let tag = tag, let tagId = tag.id {
                     tagIds.append(tagId)
                 }
             }
             
-            // Find tag IDs for the topic tags
+            // Find tag IDs for the topic tags (case-insensitive lookup)
             for tagName in result.topicTagNames {
-                if let tag = try SystemTagRecord.fetchByName(tagName, type: .topic, db: db),
-                   let tagId = tag.id {
+                let tag = try SystemTagRecord
+                    .filter(sql: "LOWER(name) = LOWER(?) AND type = ?", arguments: [tagName, SystemTagType.topic.rawValue])
+                    .fetchOne(db)
+                
+                if let tag = tag, let tagId = tag.id {
                     tagIds.append(tagId)
                 }
             }
+            
+            print("[TAGGER] 🔍 Resolved tag IDs: \(tagIds)")
             
             // Apply tags to episode
             if !tagIds.isEmpty {
                 try EpisodeTagRecord.setTags(episodeId: result.episodeId, tagIds: tagIds, db: db)
+                print("[TAGGER] ✅ Applied \(tagIds.count) tags to episode \(result.episodeId)")
+            } else {
+                print("[TAGGER] ⚠️ No tags to apply for episode \(result.episodeId)")
             }
             
             // Mark episode as tagged

@@ -218,6 +218,11 @@ final class AppDatabase: Sendable {
                 )
                 try tag.insert(db)
             }
+            
+            // Verify seeding
+            let moodCount = try SystemTagRecord.fetchMoodTags(db: db).count
+            let topicCount = try SystemTagRecord.fetchTopicTags(db: db).count
+            print("[TAGGER] 📊 Seeded \(moodCount) mood tags and \(topicCount) topic tags")
         }
         
         // Migration v6: Add episode tagging queue

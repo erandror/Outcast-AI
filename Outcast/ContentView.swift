@@ -416,14 +416,17 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     // MARK: - Category & Keyword Based Filters
     
     // Episode column names for manual row parsing
+    // IMPORTANT: Must include ALL episode columns including id and needsTagging
     private static let episodeColumnNames: Set<String> = [
+        "id",  // Primary key - was missing!
         "uuid", "podcastId", "guid", "title", "episodeDescription", "audioURL",
         "audioMimeType", "fileSize", "duration", "publishedDate", "imageURL",
         "episodeNumber", "seasonNumber", "episodeType", "link", "explicit",
         "subtitle", "author", "contentHTML", "chaptersURL", "transcripts",
         "playedUpTo", "playingStatus", "isDownloaded", "downloadedPath",
         "downloadStatus", "downloadProgress", "localFilePath", "downloadedFileSize",
-        "downloadTaskIdentifier", "downloadError", "autoDownloadStatus"
+        "downloadTaskIdentifier", "downloadError", "autoDownloadStatus",
+        "needsTagging"  // Added in v6 migration - was missing!
     ]
     
     // Helper function to parse a flattened row into EpisodeWithPodcast
@@ -558,22 +561,41 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     // MARK: - Mood Tag Based Filtering
     
     private static func fetchByMoodTag(moodTagName: String, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
-        let sql = """
-            SELECT episode.*, podcast.*
-            FROM episode
-            INNER JOIN podcast ON episode.podcastId = podcast.id
-            INNER JOIN episode_tag ON episode.id = episode_tag.episodeId
+        print("[TAGGER] 🔍 Querying episodes for mood tag: '\(moodTagName)'")
+        
+        // Get episode IDs that have the mood tag
+        let episodeIdsSql = """
+            SELECT episode_tag.episodeId
+            FROM episode_tag
             INNER JOIN system_tag ON episode_tag.tagId = system_tag.id
-            WHERE system_tag.type = 'mood' AND system_tag.name = ?
-            ORDER BY episode.publishedDate DESC
-            LIMIT ?
+            WHERE system_tag.type = 'mood' AND LOWER(system_tag.name) = LOWER(?)
             """
+        let episodeIds = try Int64.fetchAll(db, sql: episodeIdsSql, arguments: [moodTagName])
         
-        let statement = try db.makeStatement(sql: sql)
-        let rows = try Row.fetchAll(statement, arguments: StatementArguments([moodTagName, limit]))
+        guard !episodeIds.isEmpty else {
+            print("[TAGGER] 📊 Found 0 episodes for mood '\(moodTagName)'")
+            return []
+        }
         
-        // Use the helper function to parse each row
-        return try rows.map { try parseEpisodeWithPodcast(from: $0) }
+        // Use GRDB's association system to fetch episodes with podcasts
+        // This properly namespaces columns to avoid conflicts
+        let request = EpisodeRecord
+            .filter(keys: episodeIds)
+            .including(required: EpisodeRecord.podcast)
+            .order(Column("publishedDate").desc)
+            .limit(limit)
+        
+        let rows = try Row.fetchAll(db, request)
+        
+        print("[TAGGER] 📊 Found \(rows.count) episodes for mood '\(moodTagName)'")
+        
+        // Parse using GRDB's scoped rows (properly handles column namespacing)
+        return try rows.map { row in
+            EpisodeWithPodcast(
+                episode: try EpisodeRecord(row: row),
+                podcast: try PodcastRecord(row: row.scopes["podcast"]!)
+            )
+        }
     }
 }
 
