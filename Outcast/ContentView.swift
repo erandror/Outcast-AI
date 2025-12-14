@@ -332,62 +332,22 @@ struct ContentView: View {
     }
     
     private func toggleUpNext(for podcast: PodcastRecord) async {
-        // #region agent log
-        let debugLogPath = "/Users/erandrorsmacbookpro/Outcast-AI/Outcast/.cursor/debug.log"
-        func writeDebugLog(_ message: String, _ data: [String: Any], hypothesisId: String) {
-            let timestamp = Int(Date().timeIntervalSince1970 * 1000)
-            let jsonData: [String: Any] = ["location": "ContentView.swift:toggleUpNext", "message": message, "data": data, "timestamp": timestamp, "sessionId": "debug-session", "hypothesisId": hypothesisId]
-            if let json = try? JSONSerialization.data(withJSONObject: jsonData), let str = String(data: json, encoding: .utf8) {
-                if let handle = FileHandle(forWritingAtPath: debugLogPath) { handle.seekToEndOfFile(); handle.write((str + "\n").data(using: .utf8)!); handle.closeFile() } else { FileManager.default.createFile(atPath: debugLogPath, contents: (str + "\n").data(using: .utf8)) }
-            }
-        }
-        writeDebugLog("toggleUpNext called", ["podcastId": podcast.id ?? -1, "podcastTitle": podcast.title, "currentIsUpNext": podcast.isUpNext], hypothesisId: "B,E")
-        // #endregion
         do {
             // Toggle in database
-            let newIsUpNextValue = try await AppDatabase.shared.writeAsync { db in
+            try await AppDatabase.shared.writeAsync { db in
                 var updatedPodcast = podcast
                 updatedPodcast.isUpNext.toggle()
                 try updatedPodcast.update(db)
-                // #region agent log
-                let timestamp = Int(Date().timeIntervalSince1970 * 1000)
-                let jsonData: [String: Any] = ["location": "ContentView.swift:toggleUpNext:writeAsync", "message": "Database write completed", "data": ["podcastId": updatedPodcast.id ?? -1, "newIsUpNext": updatedPodcast.isUpNext], "timestamp": timestamp, "sessionId": "debug-session", "hypothesisId": "B"]
-                if let json = try? JSONSerialization.data(withJSONObject: jsonData), let str = String(data: json, encoding: .utf8) {
-                    let debugLogPath = "/Users/erandrorsmacbookpro/Outcast-AI/Outcast/.cursor/debug.log"
-                    if let handle = FileHandle(forWritingAtPath: debugLogPath) { handle.seekToEndOfFile(); handle.write((str + "\n").data(using: .utf8)!); handle.closeFile() } else { FileManager.default.createFile(atPath: debugLogPath, contents: (str + "\n").data(using: .utf8)) }
-                }
-                // #endregion
-                return updatedPodcast.isUpNext
             }
-            // #region agent log
-            writeDebugLog("After write, before loadEpisodes", ["newIsUpNextValue": newIsUpNextValue, "selectedFilter": selectedFilter.rawValue], hypothesisId: "C")
-            // #endregion
             
             // Reload episodes to reflect the change
             await loadEpisodes()
-            // #region agent log
-            writeDebugLog("After loadEpisodes", ["episodesCount": episodes.count, "selectedFilter": selectedFilter.rawValue], hypothesisId: "C")
-            // #endregion
         } catch {
             print("Failed to toggle Up Next: \(error)")
-            // #region agent log
-            writeDebugLog("toggleUpNext error", ["error": error.localizedDescription], hypothesisId: "B")
-            // #endregion
         }
     }
     
     private func loadEpisodes() async {
-        // #region agent log
-        let debugLogPath = "/Users/erandrorsmacbookpro/Outcast-AI/Outcast/.cursor/debug.log"
-        func writeDebugLog(_ message: String, _ data: [String: Any], hypothesisId: String) {
-            let timestamp = Int(Date().timeIntervalSince1970 * 1000)
-            let jsonData: [String: Any] = ["location": "ContentView.swift:loadEpisodes", "message": message, "data": data, "timestamp": timestamp, "sessionId": "debug-session", "hypothesisId": hypothesisId]
-            if let json = try? JSONSerialization.data(withJSONObject: jsonData), let str = String(data: json, encoding: .utf8) {
-                if let handle = FileHandle(forWritingAtPath: debugLogPath) { handle.seekToEndOfFile(); handle.write((str + "\n").data(using: .utf8)!); handle.closeFile() } else { FileManager.default.createFile(atPath: debugLogPath, contents: (str + "\n").data(using: .utf8)) }
-            }
-        }
-        writeDebugLog("loadEpisodes called", ["selectedFilter": selectedFilter.rawValue], hypothesisId: "D")
-        // #endregion
         do {
             let filter = selectedFilter // Capture filter before async
             let loaded = try await AppDatabase.shared.readAsync { db in
@@ -396,9 +356,6 @@ struct ContentView: View {
             await MainActor.run {
                 episodes = loaded
             }
-            // #region agent log
-            writeDebugLog("loadEpisodes completed", ["loadedCount": loaded.count, "filter": filter.rawValue], hypothesisId: "D")
-            // #endregion
         } catch {
             print("Failed to load episodes: \(error)")
         }
@@ -491,42 +448,20 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     // MARK: - Up Next (unplayed episodes from podcasts marked as Up Next)
     
     private static func fetchUpNext(limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
-        // #region agent log
-        let debugLogPath = "/Users/erandrorsmacbookpro/Outcast-AI/Outcast/.cursor/debug.log"
-        func writeDebugLog(_ message: String, _ data: [String: Any], hypothesisId: String) {
-            let timestamp = Int(Date().timeIntervalSince1970 * 1000)
-            let jsonData: [String: Any] = ["location": "ContentView.swift:fetchUpNext", "message": message, "data": data, "timestamp": timestamp, "sessionId": "debug-session", "hypothesisId": hypothesisId]
-            if let json = try? JSONSerialization.data(withJSONObject: jsonData), let str = String(data: json, encoding: .utf8) {
-                if let handle = FileHandle(forWritingAtPath: debugLogPath) { handle.seekToEndOfFile(); handle.write((str + "\n").data(using: .utf8)!); handle.closeFile() } else { FileManager.default.createFile(atPath: debugLogPath, contents: (str + "\n").data(using: .utf8)) }
-            }
-        }
-        // Check how many podcasts have isUpNext = true
-        let upNextPodcastCount = try PodcastRecord.filter(Column("isUpNext") == true).fetchCount(db)
-        // Check how many episodes have playingStatus == 0 (notPlayed)
-        let notPlayedEpisodeCount = try EpisodeRecord.filter(Column("playingStatus") == 0).fetchCount(db)
-        // Check what the current query would return (with string comparison)
-        let stringComparisonCount = try EpisodeRecord.filter(Column("playingStatus") == "notPlayed").fetchCount(db)
-        writeDebugLog("fetchUpNext entry", ["upNextPodcastCount": upNextPodcastCount, "notPlayedEpisodeCount_int0": notPlayedEpisodeCount, "notPlayedEpisodeCount_stringComparison": stringComparisonCount], hypothesisId: "A")
-        // #endregion
-        
         // Fetch unplayed episodes from podcasts where isUpNext is true
         let request = EpisodeRecord
-            .filter(Column("playingStatus") == "notPlayed")
+            .filter(Column("playingStatus") == PlayingStatus.notPlayed.rawValue)
             .joining(required: EpisodeRecord.podcast.filter(Column("isUpNext") == true))
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
             .limit(limit)
         
-        let results = try Row.fetchAll(db, request).map { row in
+        return try Row.fetchAll(db, request).map { row in
             EpisodeWithPodcast(
                 episode: try EpisodeRecord(row: row),
                 podcast: try PodcastRecord(row: row.scopes["podcast"]!)
             )
         }
-        // #region agent log
-        writeDebugLog("fetchUpNext results", ["resultCount": results.count], hypothesisId: "A")
-        // #endregion
-        return results
     }
     
     // MARK: - Short (under 25 minutes)
