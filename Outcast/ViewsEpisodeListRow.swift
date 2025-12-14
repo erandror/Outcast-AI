@@ -12,6 +12,7 @@ struct EpisodeListRow: View {
     let episode: EpisodeWithPodcast
     let onPlay: () -> Void
     let onTapEpisode: () -> Void
+    let onToggleUpNext: () -> Void
     
     private let artworkSize: CGFloat = 110
     
@@ -89,6 +90,18 @@ struct EpisodeListRow: View {
                     DownloadButton(episode: episode.episode)
                         .frame(width: 36, height: 36)
                     
+                    // Up Next button
+                    Button {
+                        onToggleUpNext()
+                    } label: {
+                        Image(systemName: episode.podcast.isUpNext ? "text.badge.checkmark" : "text.badge.plus")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    
                     Spacer()
                 }
                 .padding(.top, 4)
@@ -165,7 +178,8 @@ struct EpisodeListRow: View {
         EpisodeListRow(
             episode: EpisodeWithPodcast(episode: episode, podcast: podcast),
             onPlay: {},
-            onTapEpisode: {}
+            onTapEpisode: {},
+            onToggleUpNext: {}
         )
         .background(Color.black)
         
@@ -200,7 +214,8 @@ struct EpisodeListRow: View {
         EpisodeListRow(
             episode: EpisodeWithPodcast(episode: episode, podcast: podcast),
             onPlay: {},
-            onTapEpisode: {}
+            onTapEpisode: {},
+            onToggleUpNext: {}
         )
         .background(Color.black)
         
@@ -250,7 +265,8 @@ struct EpisodeListRow: View {
                 EpisodeListRow(
                     episode: EpisodeWithPodcast(episode: episode, podcast: podcast),
                     onPlay: {},
-                    onTapEpisode: {}
+                    onTapEpisode: {},
+                    onToggleUpNext: {}
                 )
                 
                 Rectangle()

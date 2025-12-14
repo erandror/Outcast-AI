@@ -11,6 +11,30 @@ import Combine
 import AVFoundation
 import GRDB
 
+// #region agent log
+private func debugLog(location: String, message: String, data: [String: Any], hypothesisId: String) {
+    let logPath = "/Users/erandrorsmacbookpro/Outcast-AI/Outcast/.cursor/debug.log"
+    let logEntry: [String: Any] = [
+        "timestamp": Date().timeIntervalSince1970 * 1000,
+        "location": location,
+        "message": message,
+        "data": data,
+        "sessionId": "debug-session",
+        "hypothesisId": hypothesisId
+    ]
+    if let jsonData = try? JSONSerialization.data(withJSONObject: logEntry),
+       let jsonString = String(data: jsonData, encoding: .utf8) {
+        if let fileHandle = FileHandle(forWritingAtPath: logPath) {
+            fileHandle.seekToEndOfFile()
+            fileHandle.write((jsonString + "\n").data(using: .utf8)!)
+            fileHandle.closeFile()
+        } else {
+            try? (jsonString + "\n").write(toFile: logPath, atomically: true, encoding: .utf8)
+        }
+    }
+}
+// #endregion
+
 /// Coordinates playback, database updates, and UI state
 @MainActor
 class PlaybackManager: ObservableObject {
@@ -127,6 +151,9 @@ class PlaybackManager: ObservableObject {
         // Load into player with correct start time (0 if was completed, otherwise playedUpTo)
         player.load(url: playbackURL, startTime: episodeToPlay.playedUpTo)
         
+        // Update Now Playing info with new episode
+        updateNowPlayingInfo()
+        
         // Start update timer
         startUpdateTimer()
         
@@ -145,6 +172,9 @@ class PlaybackManager: ObservableObject {
         
         player.play()
         
+        // Update Now Playing info
+        updateNowPlayingInfo()
+        
         // Update playing status in database if needed
         if let episode = currentEpisode, episode.playingStatus == .notPlayed {
             try await database.writeAsync { db in
@@ -160,6 +190,10 @@ class PlaybackManager: ObservableObject {
     /// Pause playback
     func pause() {
         player.pause()
+        
+        // Update Now Playing info
+        updateNowPlayingInfo()
+        
         Task {
             try? await savePlaybackPosition()
         }
@@ -179,6 +213,10 @@ class PlaybackManager: ObservableObject {
     /// Seek to a specific time
     func seek(to time: TimeInterval) async {
         player.seek(to: time)
+        
+        // Update Now Playing info
+        updateNowPlayingInfo()
+        
         try? await savePlaybackPosition()
     }
     
@@ -206,6 +244,7 @@ class PlaybackManager: ObservableObject {
         updateTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 try? await self?.savePlaybackPosition()
+                self?.updateNowPlayingInfo()
             }
         }
     }
@@ -213,6 +252,45 @@ class PlaybackManager: ObservableObject {
     private func stopUpdateTimer() {
         updateTimer?.invalidate()
         updateTimer = nil
+    }
+    
+    // MARK: - Now Playing Info
+    
+    /// Update Now Playing info on lock screen and control center
+    private func updateNowPlayingInfo() {
+        // #region agent log
+        debugLog(location: "PlaybackManager.swift:223", message: "updateNowPlayingInfo called", data: [
+            "hasEpisode": currentEpisode != nil,
+            "hasPodcast": currentPodcast != nil
+        ], hypothesisId: "B")
+        // #endregion
+        
+        guard let episode = currentEpisode, let podcast = currentPodcast else {
+            // #region agent log
+            debugLog(location: "PlaybackManager.swift:232", message: "Clearing now playing - no episode/podcast", data: [:], hypothesisId: "B")
+            // #endregion
+            NowPlayingManager.shared.clearNowPlaying()
+            return
+        }
+        
+        // #region agent log
+        debugLog(location: "PlaybackManager.swift:239", message: "Calling NowPlayingManager.updateNowPlaying", data: [
+            "episodeTitle": episode.title,
+            "podcastTitle": podcast.title,
+            "currentTime": currentTime,
+            "duration": duration,
+            "isPlaying": isPlaying
+        ], hypothesisId: "B")
+        // #endregion
+        
+        NowPlayingManager.shared.updateNowPlaying(
+            episode: episode,
+            podcast: podcast,
+            currentTime: currentTime,
+            duration: duration,
+            playbackRate: playbackRate,
+            isPlaying: isPlaying
+        )
     }
     
     // MARK: - Database Operations
@@ -261,6 +339,9 @@ class PlaybackManager: ObservableObject {
         Task {
             try? await markAsCompleted()
             stopUpdateTimer()
+            
+            // Clear Now Playing info
+            NowPlayingManager.shared.clearNowPlaying()
             
             // Clear current episode
             currentEpisode = nil

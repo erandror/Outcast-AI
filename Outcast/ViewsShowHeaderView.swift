@@ -10,6 +10,7 @@ import SwiftUI
 struct ShowHeaderView: View {
     let podcast: PodcastRecord
     @Binding var isExpanded: Bool
+    let onToggleUpNext: () -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -141,6 +142,22 @@ struct ShowHeaderView: View {
                 .glassEffect(.regular.tint(.white.opacity(0.1)), in: .capsule)
                 
                 Button {
+                    onToggleUpNext()
+                } label: {
+                    HStack {
+                        Image(systemName: podcast.isUpNext ? "text.badge.checkmark" : "text.badge.plus")
+                        Text("Up Next")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.tint(.white.opacity(0.1)), in: .capsule)
+                
+                Button {
                     // Share action
                 } label: {
                     HStack {
@@ -167,6 +184,22 @@ struct ShowHeaderView: View {
                 HStack {
                     Image(systemName: "bell.fill")
                     Text("Follow")
+                }
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
+                .cornerRadius(20)
+            }
+            
+            Button {
+                onToggleUpNext()
+            } label: {
+                HStack {
+                    Image(systemName: podcast.isUpNext ? "text.badge.checkmark" : "text.badge.plus")
+                    Text("Up Next")
                 }
                 .font(.subheadline)
                 .fontWeight(.semibold)
@@ -206,7 +239,8 @@ struct ShowHeaderView: View {
             homePageURL: "https://example.com",
             artworkColor: "#FF6B35"
         ),
-        isExpanded: .constant(true)
+        isExpanded: .constant(true),
+        onToggleUpNext: {}
     )
     .background(Color.black)
 }

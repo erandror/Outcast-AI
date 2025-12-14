@@ -25,6 +25,7 @@ struct PodcastRecord: Identifiable, Codable, Sendable {
     var addedDate: Date
     var artworkColor: String?
     var isFullyLoaded: Bool
+    var isUpNext: Bool
     
     // Extended metadata fields
     var language: String?
@@ -54,6 +55,7 @@ struct PodcastRecord: Identifiable, Codable, Sendable {
         addedDate: Date = Date(),
         artworkColor: String? = nil,
         isFullyLoaded: Bool = true,
+        isUpNext: Bool = false,
         language: String? = nil,
         showType: String? = nil,
         copyright: String? = nil,
@@ -80,6 +82,7 @@ struct PodcastRecord: Identifiable, Codable, Sendable {
         self.addedDate = addedDate
         self.artworkColor = artworkColor
         self.isFullyLoaded = isFullyLoaded
+        self.isUpNext = isUpNext
         self.language = language
         self.showType = showType
         self.copyright = copyright

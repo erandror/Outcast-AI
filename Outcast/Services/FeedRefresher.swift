@@ -41,11 +41,16 @@ actor FeedRefresher {
             try PodcastRecord.fetchAll(db)
         }
         
+        // Prioritize Up Next podcasts for faster refresh
+        let upNextPodcasts = podcasts.filter { $0.isUpNext }
+        let otherPodcasts = podcasts.filter { !$0.isUpNext }
+        let orderedPodcasts = upNextPodcasts + otherPodcasts
+        
         var totalNewEpisodes = 0
         
         // Refresh feeds concurrently but with a limit
         await withTaskGroup(of: Int.self) { group in
-            for podcast in podcasts {
+            for podcast in orderedPodcasts {
                 group.addTask {
                     do {
                         return try await self.refresh(podcast: podcast)
@@ -60,6 +65,9 @@ actor FeedRefresher {
                 totalNewEpisodes += newCount
             }
         }
+        
+        // Update global last refresh timestamp
+        UserDefaults.lastFeedRefresh = Date()
         
         return totalNewEpisodes
     }
@@ -666,5 +674,16 @@ extension Data {
             hash = ((hash << 5) &+ hash) &+ UInt64(byte)
         }
         return String(format: "%016llx", hash)
+    }
+}
+
+// MARK: - UserDefaults for Last Refresh Tracking
+
+extension UserDefaults {
+    private static let lastFeedRefreshKey = "lastFeedRefresh"
+    
+    static var lastFeedRefresh: Date? {
+        get { standard.object(forKey: lastFeedRefreshKey) as? Date }
+        set { standard.set(newValue, forKey: lastFeedRefreshKey) }
     }
 }

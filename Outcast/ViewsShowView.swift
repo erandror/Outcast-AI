@@ -9,7 +9,7 @@ import SwiftUI
 import GRDB
 
 struct ShowView: View {
-    let podcast: PodcastRecord
+    @State private var podcast: PodcastRecord
     @State private var episodes: [EpisodeWithPodcast] = []
     @State private var selectedEpisodeForPlayer: EpisodeWithPodcast?
     @State private var selectedEpisodeForDetail: EpisodeWithPodcast?
@@ -17,6 +17,10 @@ struct ShowView: View {
     @State private var isHeaderExpanded = false
     @State private var isLoading = true
     @Environment(\.dismiss) private var dismiss
+    
+    init(podcast: PodcastRecord) {
+        _podcast = State(initialValue: podcast)
+    }
     
     var body: some View {
         ZStack {
@@ -27,7 +31,11 @@ struct ShowView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     // Header with podcast info
-                    ShowHeaderView(podcast: podcast, isExpanded: $isHeaderExpanded)
+                    ShowHeaderView(
+                        podcast: podcast,
+                        isExpanded: $isHeaderExpanded,
+                        onToggleUpNext: toggleUpNext
+                    )
                     
                     // Episodes section header
                     if !episodes.isEmpty {
@@ -65,6 +73,9 @@ struct ShowView: View {
                                     },
                                     onTapEpisode: {
                                         selectedEpisodeForDetail = episode
+                                    },
+                                    onToggleUpNext: {
+                                        toggleUpNext()
                                     }
                                 )
                                 
@@ -128,6 +139,24 @@ struct ShowView: View {
         }
         .padding(.vertical, 60)
         .frame(maxWidth: .infinity)
+    }
+    
+    private func toggleUpNext() {
+        Task {
+            do {
+                // Toggle the local state
+                podcast.isUpNext.toggle()
+                
+                // Save to database
+                try await AppDatabase.shared.writeAsync { db in
+                    try podcast.update(db)
+                }
+            } catch {
+                print("Failed to toggle Up Next: \(error)")
+                // Revert local state on error
+                podcast.isUpNext.toggle()
+            }
+        }
     }
     
     private func loadEpisodes() async {

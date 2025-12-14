@@ -241,6 +241,13 @@ final class AppDatabase: Sendable {
             try db.create(index: "episode_lastPlayedAt", on: "episode", columns: ["lastPlayedAt"])
         }
         
+        // Migration v8: Add isUpNext for Up Next feature
+        migrator.registerMigration("v8_up_next") { db in
+            try db.alter(table: "podcast") { t in
+                t.add(column: "isUpNext", .boolean).notNull().defaults(to: false)
+            }
+        }
+        
         return migrator
     }
 }
