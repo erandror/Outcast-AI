@@ -9,6 +9,7 @@ import SwiftUI
 
 struct MiniPlayer: View {
     @ObservedObject private var playbackManager = PlaybackManager.shared
+    var onTap: (() -> Void)?
     
     var body: some View {
         if let episode = playbackManager.currentEpisode,
@@ -78,10 +79,16 @@ struct MiniPlayer: View {
             )
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .transition(.move(edge: .bottom).combined(with: .opacity))
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onTap?()
+            }
         }
     }
 }
 
 #Preview {
-    MiniPlayer()
+    MiniPlayer(onTap: {
+        print("Mini player tapped")
+    })
 }

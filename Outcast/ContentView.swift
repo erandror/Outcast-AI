@@ -239,7 +239,13 @@ struct ContentView: View {
     
     private var bottomOverlay: some View {
         VStack(spacing: 0) {
-            MiniPlayer()
+            MiniPlayer(onTap: {
+                // Find the current episode in the episodes list and open player
+                if let currentEpisode = playbackManager.currentEpisode,
+                   let episode = episodes.first(where: { $0.episode.uuid == currentEpisode.uuid }) {
+                    selectedEpisodeForPlayer = episode
+                }
+            })
             
             Divider()
                 .background(Color.white.opacity(0.1))
