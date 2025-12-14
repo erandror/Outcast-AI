@@ -233,6 +233,14 @@ final class AppDatabase: Sendable {
             try db.create(index: "episode_needsTagging", on: "episode", columns: ["needsTagging"])
         }
         
+        // Migration v7: Add lastPlayedAt for history tracking
+        migrator.registerMigration("v7_last_played_at") { db in
+            try db.alter(table: "episode") { t in
+                t.add(column: "lastPlayedAt", .datetime)
+            }
+            try db.create(index: "episode_lastPlayedAt", on: "episode", columns: ["lastPlayedAt"])
+        }
+        
         return migrator
     }
 }

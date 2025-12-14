@@ -82,26 +82,50 @@ class PlaybackManager: ObservableObject {
             try PodcastRecord.fetchOne(db, key: episode.podcastId)
         }
         
-        currentEpisode = episode
+        // Prepare episode for playback
+        var episodeToPlay = episode
+        
+        // If completed, reset position to start from beginning
+        if episode.playingStatus == .completed {
+            episodeToPlay.playedUpTo = 0
+        }
+        
+        // Update lastPlayedAt timestamp and reset status if completed
+        try await database.writeAsync { db in
+            var updated = episodeToPlay
+            updated.lastPlayedAt = Date()
+            if episode.playingStatus == .completed {
+                updated.playingStatus = .inProgress
+                updated.playedUpTo = 0
+            }
+            try updated.update(db)
+        }
+        
+        // Refresh episode with updated values
+        episodeToPlay = try await database.readAsync { db in
+            try EpisodeRecord.filter(Column("uuid") == episode.uuid).fetchOne(db)!
+        }
+        
+        currentEpisode = episodeToPlay
         currentPodcast = podcast
         
         // Determine playback URL
         let playbackURL: URL
-        if episode.downloadStatus == .downloaded,
-           episode.localFilePath != nil {
+        if episodeToPlay.downloadStatus == .downloaded,
+           episodeToPlay.localFilePath != nil {
             // Play from local file
-            let fileExtension = await fileStorage.fileExtension(from: episode.audioMimeType, or: episode.audioURL)
-            playbackURL = await fileStorage.fileURL(for: episode.uuid, fileExtension: fileExtension)
+            let fileExtension = await fileStorage.fileExtension(from: episodeToPlay.audioMimeType, or: episodeToPlay.audioURL)
+            playbackURL = await fileStorage.fileURL(for: episodeToPlay.uuid, fileExtension: fileExtension)
         } else {
             // Stream from URL
-            guard let url = URL(string: episode.audioURL) else {
+            guard let url = URL(string: episodeToPlay.audioURL) else {
                 throw PlaybackError.invalidURL
             }
             playbackURL = url
         }
         
-        // Load into player
-        player.load(url: playbackURL, startTime: episode.playedUpTo)
+        // Load into player with correct start time (0 if was completed, otherwise playedUpTo)
+        player.load(url: playbackURL, startTime: episodeToPlay.playedUpTo)
         
         // Start update timer
         startUpdateTimer()

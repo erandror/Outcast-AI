@@ -63,6 +63,7 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
     // Playback state
     var playedUpTo: TimeInterval
     var playingStatus: PlayingStatus
+    var lastPlayedAt: Date?
     var isDownloaded: Bool
     var downloadedPath: String?
     
@@ -103,6 +104,7 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         transcripts: String? = nil,
         playedUpTo: TimeInterval = 0,
         playingStatus: PlayingStatus = .notPlayed,
+        lastPlayedAt: Date? = nil,
         isDownloaded: Bool = false,
         downloadedPath: String? = nil,
         downloadStatus: DownloadStatus = .notDownloaded,
@@ -138,6 +140,7 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         self.transcripts = transcripts
         self.playedUpTo = playedUpTo
         self.playingStatus = playingStatus
+        self.lastPlayedAt = lastPlayedAt
         self.isDownloaded = isDownloaded
         self.downloadedPath = downloadedPath
         self.downloadStatus = downloadStatus
@@ -204,6 +207,15 @@ extension EpisodeRecord {
         try EpisodeRecord
             .filter(Column("playingStatus") == PlayingStatus.inProgress.rawValue)
             .order(Column("publishedDate").desc)
+            .fetchAll(db)
+    }
+    
+    /// Fetch history - episodes that have been played, ordered by most recent play
+    static func fetchHistory(limit: Int = 50, db: Database) throws -> [EpisodeRecord] {
+        try EpisodeRecord
+            .filter(Column("lastPlayedAt") != nil)
+            .order(Column("lastPlayedAt").desc)
+            .limit(limit)
             .fetchAll(db)
     }
     

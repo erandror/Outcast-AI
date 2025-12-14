@@ -102,14 +102,17 @@ struct ContentView: View {
                 ImportProgressBanner(progress: progress)
             }
             
-            ForYouFilterBar(selectedFilter: $selectedFilter)
+            // Only show filter bar on Listen tab
+            if selectedTab == .listen {
+                ForYouFilterBar(selectedFilter: $selectedFilter)
+            }
         }
         .background(Color.black)
     }
     
     private var headerView: some View {
         HStack {
-            Text("For You")
+            Text(headerTitle)
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .foregroundStyle(.white)
@@ -136,13 +139,24 @@ struct ContentView: View {
         .padding(.bottom, 12)
     }
     
+    private var headerTitle: String {
+        switch selectedTab {
+        case .listen:
+            return "For You"
+        case .history:
+            return "History"
+        case .profile:
+            return "Profile"
+        }
+    }
+    
     private var tabContent: some View {
         Group {
             switch selectedTab {
             case .listen:
                 listenContent
             case .history:
-                placeholderView(title: "History", message: "Your recently played episodes will appear here.")
+                historyContent
             case .profile:
                 placeholderView(title: "Profile", message: "Profile settings and preferences coming soon.")
             }
@@ -183,6 +197,18 @@ struct ContentView: View {
         .refreshable {
             await refreshFeeds()
         }
+    }
+    
+    private var historyContent: some View {
+        HistoryView(
+            onPlayEpisode: { episode in
+                selectedEpisodeForPlayer = episode
+                showPlayer = true
+            },
+            onTapEpisode: { episode in
+                selectedEpisodeForDetail = episode
+            }
+        )
     }
     
     private var emptyStateView: some View {
@@ -360,6 +386,21 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         let request = EpisodeRecord
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
+            .limit(limit)
+        
+        return try Row.fetchAll(db, request).map { row in
+            EpisodeWithPodcast(
+                episode: try EpisodeRecord(row: row),
+                podcast: try PodcastRecord(row: row.scopes["podcast"]!)
+            )
+        }
+    }
+    
+    static func fetchHistory(limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+        let request = EpisodeRecord
+            .filter(Column("lastPlayedAt") != nil)
+            .including(required: EpisodeRecord.podcast)
+            .order(Column("lastPlayedAt").desc)
             .limit(limit)
         
         return try Row.fetchAll(db, request).map { row in
