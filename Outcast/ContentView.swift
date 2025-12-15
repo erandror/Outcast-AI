@@ -8,6 +8,15 @@
 import SwiftUI
 import GRDB
 
+// MARK: - Scroll Offset Preference Key
+
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct ContentView: View {
     private enum MainTab {
         case listen
@@ -27,6 +36,10 @@ struct ContentView: View {
     @State private var importProgress: ImportCoordinator.ImportProgress?
     @State private var selectedTab: MainTab = .listen
     @ObservedObject private var playbackManager = PlaybackManager.shared
+    
+    // Scroll tracking state
+    @State private var lastScrollOffset: CGFloat = 0
+    @State private var showHeader = true
 
     var body: some View {
         NavigationStack {
@@ -35,8 +48,21 @@ struct ContentView: View {
                     .ignoresSafeArea()
                 
                 VStack(spacing: 0) {
-                    // Persistent top area
-                    topBarArea
+                    // Collapsible header with animation
+                    if showHeader {
+                        headerView
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    
+                    // Import progress banner (if active)
+                    if let progress = importProgress {
+                        ImportProgressBanner(progress: progress)
+                    }
+                    
+                    // Sticky filter bar (Listen tab only)
+                    if selectedTab == .listen {
+                        ForYouFilterBar(selectedFilter: $selectedFilter)
+                    }
                     
                     // Tab content fills remaining space
                     tabContent
@@ -53,6 +79,9 @@ struct ContentView: View {
                 DownloadsListView()
             }
         }
+        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { offset in
+            handleScrollOffsetChange(offset)
+        }
         .task {
             await loadEpisodes()
             // Start monitoring import progress
@@ -62,6 +91,11 @@ struct ContentView: View {
             Task {
                 await loadEpisodes()
             }
+        }
+        .onChange(of: selectedTab) {
+            // Reset header visibility when switching tabs
+            showHeader = true
+            lastScrollOffset = 0
         }
         .onChange(of: importProgress) { _, newProgress in
             // Reload episodes when import completes
@@ -92,22 +126,6 @@ struct ContentView: View {
                     }
                 }
         }
-    }
-    
-    private var topBarArea: some View {
-        VStack(spacing: 0) {
-            headerView
-            
-            if let progress = importProgress {
-                ImportProgressBanner(progress: progress)
-            }
-            
-            // Only show filter bar on Listen tab
-            if selectedTab == .listen {
-                ForYouFilterBar(selectedFilter: $selectedFilter)
-            }
-        }
-        .background(Color.black)
     }
     
     private var headerView: some View {
@@ -165,6 +183,12 @@ struct ContentView: View {
     
     private var listenContent: some View {
         ScrollView {
+            GeometryReader { geometry in
+                Color.clear
+                    .preference(key: ScrollOffsetPreferenceKey.self, value: geometry.frame(in: .named("scroll")).minY)
+            }
+            .frame(height: 0)
+            
             VStack(spacing: 0) {
                 if episodes.isEmpty && !isRefreshing {
                     emptyStateView
@@ -199,6 +223,7 @@ struct ContentView: View {
                 }
             }
         }
+        .coordinateSpace(name: "scroll")
         .refreshable {
             await refreshFeeds()
         }
@@ -290,43 +315,31 @@ struct ContentView: View {
         HStack(spacing: 32) {
             navButton(
                 icon: "play.circle",
-                label: "Listen",
                 tab: .listen
             )
             
             navButton(
                 icon: "clock.arrow.circlepath",
-                label: "History",
                 tab: .history
             )
             
             navButton(
                 icon: "person.crop.circle",
-                label: "Profile",
                 tab: .profile
             )
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
     }
     
-    private func navButton(icon: String, label: String, tab: MainTab) -> some View {
+    private func navButton(icon: String, tab: MainTab) -> some View {
         Button {
             selectedTab = tab
         } label: {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                Text(label)
-                    .font(.system(size: 13, weight: .medium))
-            }
-            .frame(maxWidth: .infinity)
-            .foregroundStyle(selectedTab == tab ? Color.white : Color.white.opacity(0.6))
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(selectedTab == tab ? Color.white.opacity(0.08) : Color.clear)
-            )
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(selectedTab == tab ? Color.white : Color.white.opacity(0.5))
         }
         .buttonStyle(.plain)
     }
@@ -392,6 +405,26 @@ struct ContentView: View {
             
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
         }
+    }
+    
+    private func handleScrollOffsetChange(_ offset: CGFloat) {
+        let threshold: CGFloat = 5
+        let offsetDelta = offset - lastScrollOffset
+        
+        // Only react to significant changes to avoid flickering
+        guard abs(offsetDelta) > threshold else { return }
+        
+        withAnimation(.easeOut(duration: 0.2)) {
+            if offsetDelta > 0 {
+                // Scrolling down - hide header
+                showHeader = false
+            } else {
+                // Scrolling up - show header immediately
+                showHeader = true
+            }
+        }
+        
+        lastScrollOffset = offset
     }
 }
 

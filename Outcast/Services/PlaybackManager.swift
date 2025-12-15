@@ -81,6 +81,17 @@ class PlaybackManager: ObservableObject {
         
         player.$isBuffering
             .assign(to: &$isBuffering)
+        
+        // Save detected duration to database if episode lacks duration metadata
+        player.$duration
+            .dropFirst()  // Skip initial 0
+            .filter { $0 > 0 }
+            .sink { [weak self] detectedDuration in
+                Task { @MainActor in
+                    await self?.saveDetectedDurationIfNeeded(detectedDuration)
+                }
+            }
+            .store(in: &cancellables)
     }
     
     private func setupNotifications() {
@@ -328,6 +339,20 @@ class PlaybackManager: ObservableObject {
             updatedEpisode.playingStatus = .completed
             updatedEpisode.playedUpTo = updatedEpisode.duration ?? 0
             try updatedEpisode.update(db)
+        }
+        
+        await refreshCurrentEpisode()
+    }
+    
+    /// Save detected duration to database if episode lacks duration metadata
+    private func saveDetectedDurationIfNeeded(_ detectedDuration: TimeInterval) async {
+        guard let episode = currentEpisode,
+              episode.duration == nil || episode.duration == 0 else { return }
+        
+        try? await database.writeAsync { db in
+            var updated = episode
+            updated.duration = detectedDuration
+            try updated.update(db)
         }
         
         await refreshCurrentEpisode()

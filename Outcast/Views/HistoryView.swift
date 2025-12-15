@@ -17,6 +17,12 @@ struct HistoryView: View {
     
     var body: some View {
         ScrollView {
+            GeometryReader { geometry in
+                Color.clear
+                    .preference(key: ScrollOffsetPreferenceKey.self, value: geometry.frame(in: .named("scroll")).minY)
+            }
+            .frame(height: 0)
+            
             VStack(spacing: 0) {
                 if historyEpisodes.isEmpty && !isLoading {
                     emptyStateView
@@ -45,6 +51,7 @@ struct HistoryView: View {
                 }
             }
         }
+        .coordinateSpace(name: "scroll")
         .task {
             await loadHistory()
         }
@@ -142,16 +149,32 @@ struct HistoryEpisodeRow: View {
                         Text("Finished")
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.5))
+                        
+                        if let lastPlayed = episode.episode.lastPlayedAt {
+                            Text("•")
+                                .foregroundStyle(.white.opacity(0.5))
+                            
+                            Text(lastPlayed, format: .relative(presentation: .named))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .lineLimit(1)
+                        }
                     } else if let remainingFormatted = episode.episode.remainingTimeFormatted {
                         Text(remainingFormatted)
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.5))
-                    }
-                    
-                    if let lastPlayed = episode.episode.lastPlayedAt {
-                        Text("•")
-                            .foregroundStyle(.white.opacity(0.5))
                         
+                        if let lastPlayed = episode.episode.lastPlayedAt {
+                            Text("•")
+                                .foregroundStyle(.white.opacity(0.5))
+                            
+                            Text(lastPlayed, format: .relative(presentation: .named))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .lineLimit(1)
+                        }
+                    } else if let lastPlayed = episode.episode.lastPlayedAt {
+                        // Only show time ago when there's no remaining time or finished status
                         Text(lastPlayed, format: .relative(presentation: .named))
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.5))

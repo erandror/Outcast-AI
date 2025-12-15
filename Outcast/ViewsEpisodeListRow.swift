@@ -55,7 +55,17 @@ struct EpisodeListRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 
                 HStack(spacing: 4) {
-                    if let duration = episode.episode.duration {
+                    // Show remaining time for in-progress episodes, total duration otherwise
+                    if episode.episode.playingStatus == .inProgress,
+                       let remaining = episode.episode.remainingTimeFormatted {
+                        Text(remaining)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.5))
+                    } else if episode.episode.playingStatus == .completed {
+                        Text("Finished")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.5))
+                    } else if let duration = episode.episode.duration {
                         Text(formatDuration(duration))
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.5))
