@@ -11,19 +11,31 @@ struct ForYouFilterBar: View {
     @Binding var selectedFilter: ForYouFilter
     
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(ForYouFilter.allCases, id: \.self) { filter in
-                    FilterTab(
-                        filter: filter,
-                        isSelected: selectedFilter == filter
-                    ) {
-                        selectedFilter = filter
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(ForYouFilter.allCases, id: \.self) { filter in
+                        FilterTab(
+                            filter: filter,
+                            isSelected: selectedFilter == filter
+                        ) {
+                            selectedFilter = filter
+                        }
+                        .id(filter)
                     }
                 }
+                .padding(.horizontal, UIScreen.main.bounds.width / 2 - 60)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .onChange(of: selectedFilter) { _, newFilter in
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(newFilter, anchor: .center)
+                }
+            }
+            .onAppear {
+                // Scroll to initial selection without animation
+                proxy.scrollTo(selectedFilter, anchor: .center)
+            }
         }
         .background(Color.black)
     }

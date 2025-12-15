@@ -182,6 +182,17 @@ struct ContentView: View {
     }
     
     private var listenContent: some View {
+        TabView(selection: $selectedFilter) {
+            ForEach(ForYouFilter.allCases, id: \.self) { filter in
+                filterContentView(for: filter)
+                    .tag(filter)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+    }
+    
+    @ViewBuilder
+    private func filterContentView(for filter: ForYouFilter) -> some View {
         ScrollView {
             GeometryReader { geometry in
                 Color.clear
