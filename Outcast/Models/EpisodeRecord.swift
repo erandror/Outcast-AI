@@ -214,6 +214,7 @@ extension EpisodeRecord {
     static func fetchHistory(limit: Int = 50, db: Database) throws -> [EpisodeRecord] {
         try EpisodeRecord
             .filter(Column("lastPlayedAt") != nil)
+            .filter(Column("playedUpTo") >= 180)  // Minimum 3 minutes listened
             .order(Column("lastPlayedAt").desc)
             .limit(limit)
             .fetchAll(db)

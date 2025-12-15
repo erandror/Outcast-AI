@@ -420,6 +420,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     static func fetchHistory(limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
         let request = EpisodeRecord
             .filter(Column("lastPlayedAt") != nil)
+            .filter(Column("playedUpTo") >= 180)  // Minimum 3 minutes listened
             .including(required: EpisodeRecord.podcast)
             .order(Column("lastPlayedAt").desc)
             .limit(limit)
