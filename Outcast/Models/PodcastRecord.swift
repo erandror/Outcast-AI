@@ -9,7 +9,7 @@ import Foundation
 import GRDB
 
 /// Represents a podcast subscription in the database
-struct PodcastRecord: Identifiable, Codable, Sendable {
+struct PodcastRecord: Identifiable, Codable, Sendable, Hashable {
     var id: Int64?
     var uuid: String
     var feedURL: String
@@ -93,6 +93,18 @@ struct PodcastRecord: Identifiable, Codable, Sendable {
         self.fundingURL = fundingURL
         self.htmlDescription = htmlDescription
         self.categories = categories
+    }
+}
+
+// MARK: - Hashable & Equatable
+
+extension PodcastRecord {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(uuid)
+    }
+    
+    static func == (lhs: PodcastRecord, rhs: PodcastRecord) -> Bool {
+        lhs.uuid == rhs.uuid
     }
 }
 

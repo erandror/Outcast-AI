@@ -20,6 +20,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 struct ContentView: View {
     private enum MainTab {
         case listen
+        case shows
         case history
         case profile
     }
@@ -36,6 +37,7 @@ struct ContentView: View {
     @State private var topicFilters: [SystemTagRecord] = []
     @State private var importProgress: ImportCoordinator.ImportProgress?
     @State private var selectedTab: MainTab = .listen
+    @State private var selectedPodcast: PodcastRecord?
     @ObservedObject private var playbackManager = PlaybackManager.shared
     
     // Scroll tracking state
@@ -131,6 +133,9 @@ struct ContentView: View {
                     }
                 }
         }
+        .navigationDestination(item: $selectedPodcast) { podcast in
+            ShowView(podcast: podcast)
+        }
     }
     
     private var headerView: some View {
@@ -166,6 +171,8 @@ struct ContentView: View {
         switch selectedTab {
         case .listen:
             return "For You"
+        case .shows:
+            return "Shows"
         case .history:
             return "History"
         case .profile:
@@ -178,6 +185,8 @@ struct ContentView: View {
             switch selectedTab {
             case .listen:
                 listenContent
+            case .shows:
+                showsContent
             case .history:
                 historyContent
             case .profile:
@@ -252,6 +261,12 @@ struct ContentView: View {
         .refreshable {
             await refreshFeeds()
         }
+    }
+    
+    private var showsContent: some View {
+        ShowsView(onSelectPodcast: { podcast in
+            selectedPodcast = podcast
+        })
     }
     
     private var historyContent: some View {
@@ -337,10 +352,15 @@ struct ContentView: View {
     }
     
     private var bottomNavBar: some View {
-        HStack(spacing: 32) {
+        HStack(spacing: 24) {
             navButton(
                 icon: "play.circle",
                 tab: .listen
+            )
+            
+            navButton(
+                icon: "square.grid.2x2",
+                tab: .shows
             )
             
             navButton(
