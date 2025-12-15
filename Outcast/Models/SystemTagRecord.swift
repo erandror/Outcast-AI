@@ -15,7 +15,7 @@ enum SystemTagType: String, Codable, Sendable {
 }
 
 /// Represents a system-defined tag in the database
-struct SystemTagRecord: Identifiable, Codable, Sendable {
+struct SystemTagRecord: Identifiable, Codable, Sendable, Equatable {
     var id: Int64?
     var uuid: String
     var type: SystemTagType

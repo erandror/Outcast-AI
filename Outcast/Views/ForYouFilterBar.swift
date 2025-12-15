@@ -8,20 +8,39 @@
 import SwiftUI
 
 struct ForYouFilterBar: View {
-    @Binding var selectedFilter: ForYouFilter
+    @Binding var selectedFilter: ListenFilter
+    let topicFilters: [SystemTagRecord]
+    
+    /// Build the complete filter array: topics (sorted by popularity) + Up Next + mood filters
+    private var allFilters: [ListenFilter] {
+        var filters: [ListenFilter] = []
+        
+        // Add topic filters (reversed so most popular is closest to center)
+        let sortedTopics = topicFilters.reversed()
+        filters.append(contentsOf: sortedTopics.map { .topic($0) })
+        
+        // Add Up Next in the center
+        filters.append(.standard(.upNext))
+        
+        // Add remaining mood/time filters (excluding upNext which is already added)
+        let standardFilters = ForYouFilter.allCases.filter { $0 != .upNext }
+        filters.append(contentsOf: standardFilters.map { .standard($0) })
+        
+        return filters
+    }
     
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    ForEach(ForYouFilter.allCases, id: \.self) { filter in
+                    ForEach(allFilters, id: \.id) { filter in
                         FilterTab(
                             filter: filter,
-                            isSelected: selectedFilter == filter
+                            isSelected: selectedFilter.id == filter.id
                         ) {
                             selectedFilter = filter
                         }
-                        .id(filter)
+                        .id(filter.id)
                     }
                 }
                 .padding(.horizontal, UIScreen.main.bounds.width / 2 - 60)
@@ -29,12 +48,16 @@ struct ForYouFilterBar: View {
             }
             .onChange(of: selectedFilter) { _, newFilter in
                 withAnimation(.easeInOut(duration: 0.25)) {
-                    proxy.scrollTo(newFilter, anchor: .center)
+                    proxy.scrollTo(newFilter.id, anchor: .center)
                 }
+            }
+            .onChange(of: topicFilters) {
+                // Re-center when topic filters load
+                proxy.scrollTo(selectedFilter.id, anchor: .center)
             }
             .onAppear {
                 // Scroll to initial selection without animation
-                proxy.scrollTo(selectedFilter, anchor: .center)
+                proxy.scrollTo(selectedFilter.id, anchor: .center)
             }
         }
         .background(Color.black)
@@ -42,7 +65,7 @@ struct ForYouFilterBar: View {
 }
 
 private struct FilterTab: View {
-    let filter: ForYouFilter
+    let filter: ListenFilter
     let isSelected: Bool
     let action: () -> Void
     
@@ -73,7 +96,10 @@ private struct FilterTab: View {
 
 #Preview {
     VStack {
-        ForYouFilterBar(selectedFilter: .constant(.latest))
+        ForYouFilterBar(
+            selectedFilter: .constant(.standard(.upNext)),
+            topicFilters: []
+        )
         Spacer()
     }
     .background(Color.black)

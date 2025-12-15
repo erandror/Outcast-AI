@@ -32,7 +32,8 @@ struct ContentView: View {
     @State private var isRefreshing = false
     @State private var lastRefreshDate: Date?
     @State private var showDownloads = false
-    @State private var selectedFilter: ForYouFilter = .latest
+    @State private var selectedFilter: ListenFilter = .standard(.upNext)
+    @State private var topicFilters: [SystemTagRecord] = []
     @State private var importProgress: ImportCoordinator.ImportProgress?
     @State private var selectedTab: MainTab = .listen
     @ObservedObject private var playbackManager = PlaybackManager.shared
@@ -61,7 +62,10 @@ struct ContentView: View {
                     
                     // Sticky filter bar (Listen tab only)
                     if selectedTab == .listen {
-                        ForYouFilterBar(selectedFilter: $selectedFilter)
+                        ForYouFilterBar(
+                            selectedFilter: $selectedFilter,
+                            topicFilters: topicFilters
+                        )
                     }
                     
                     // Tab content fills remaining space
@@ -83,6 +87,7 @@ struct ContentView: View {
             handleScrollOffsetChange(offset)
         }
         .task {
+            await loadTopicFilters()
             await loadEpisodes()
             // Start monitoring import progress
             await monitorImportProgress()
@@ -183,7 +188,16 @@ struct ContentView: View {
     
     private var listenContent: some View {
         TabView(selection: $selectedFilter) {
-            ForEach(ForYouFilter.allCases, id: \.self) { filter in
+            // Topic filters
+            ForEach(topicFilters.reversed(), id: \.uuid) { topic in
+                let filter = ListenFilter.topic(topic)
+                filterContentView(for: filter)
+                    .tag(filter)
+            }
+            
+            // Standard filters
+            ForEach(ForYouFilter.allCases, id: \.self) { forYouFilter in
+                let filter = ListenFilter.standard(forYouFilter)
                 filterContentView(for: filter)
                     .tag(filter)
             }
@@ -192,7 +206,7 @@ struct ContentView: View {
     }
     
     @ViewBuilder
-    private func filterContentView(for filter: ForYouFilter) -> some View {
+    private func filterContentView(for filter: ListenFilter) -> some View {
         ScrollView {
             GeometryReader { geometry in
                 Color.clear
@@ -371,6 +385,26 @@ struct ContentView: View {
         }
     }
     
+    private func loadTopicFilters() async {
+        do {
+            let topicStats = try await AppDatabase.shared.readAsync { db in
+                try EpisodeTagRecord.fetchTagStatistics(type: .topic, db: db)
+            }
+            
+            // Filter to only topics with at least 1 episode, sorted by count descending
+            let filteredTopics = topicStats
+                .filter { $0.count > 0 }
+                .sorted { $0.count > $1.count }
+                .map { $0.tag }
+            
+            await MainActor.run {
+                topicFilters = filteredTopics
+            }
+        } catch {
+            print("Failed to load topic filters: \(error)")
+        }
+    }
+    
     private func loadEpisodes() async {
         do {
             let filter = selectedFilter // Capture filter before async
@@ -477,7 +511,20 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         }
     }
     
-    static func fetchFiltered(filter: ForYouFilter, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    static func fetchFiltered(filter: ListenFilter, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+        switch filter {
+        case .standard(let forYouFilter):
+            return try fetchFilteredByForYouFilter(filter: forYouFilter, limit: limit, db: db)
+        case .topic(let tag):
+            guard let tagId = tag.id else {
+                print("[TAGGER] ⚠️ Topic tag has no ID")
+                return []
+            }
+            return try fetchByTopicTag(tagId: tagId, limit: limit, db: db)
+        }
+    }
+    
+    private static func fetchFilteredByForYouFilter(filter: ForYouFilter, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
         switch filter {
         case .upNext:
             return try fetchUpNext(limit: limit, db: db)
@@ -704,6 +751,44 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         print("[TAGGER] 📊 Found \(rows.count) episodes for mood '\(moodTagName)'")
         
         // Parse using GRDB's scoped rows (properly handles column namespacing)
+        return try rows.map { row in
+            EpisodeWithPodcast(
+                episode: try EpisodeRecord(row: row),
+                podcast: try PodcastRecord(row: row.scopes["podcast"]!)
+            )
+        }
+    }
+    
+    // MARK: - Topic Tag Based Filtering
+    
+    private static func fetchByTopicTag(tagId: Int64, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+        print("[TAGGER] 🔍 Querying episodes for topic tag ID: \(tagId)")
+        
+        // Get episode IDs that have the topic tag
+        let episodeIdsSql = """
+            SELECT episode_tag.episodeId
+            FROM episode_tag
+            WHERE episode_tag.tagId = ?
+            """
+        let episodeIds = try Int64.fetchAll(db, sql: episodeIdsSql, arguments: [tagId])
+        
+        guard !episodeIds.isEmpty else {
+            print("[TAGGER] 📊 Found 0 episodes for topic tag \(tagId)")
+            return []
+        }
+        
+        // Use GRDB's association system to fetch episodes with podcasts
+        let request = EpisodeRecord
+            .filter(keys: episodeIds)
+            .including(required: EpisodeRecord.podcast)
+            .order(Column("publishedDate").desc)
+            .limit(limit)
+        
+        let rows = try Row.fetchAll(db, request)
+        
+        print("[TAGGER] 📊 Found \(rows.count) episodes for topic tag \(tagId)")
+        
+        // Parse using GRDB's scoped rows
         return try rows.map { row in
             EpisodeWithPodcast(
                 episode: try EpisodeRecord(row: row),
