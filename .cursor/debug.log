@@ -1,0 +1,7 @@
+{"message":"NowPlayingManager init called","data":{},"location":"NowPlayingManager.swift:20","timestamp":1765890380707.438,"sessionId":"debug-session","hypothesisId":"A"}
+{"data":{"beforeCategory":"AVAudioSessionCategorySoloAmbient"},"sessionId":"debug-session","message":"Configuring audio session in NowPlayingManager","hypothesisId":"G","timestamp":1765890380710.312,"location":"NowPlayingManager.swift:40"}
+{"location":"NowPlayingManager.swift:50","sessionId":"debug-session","hypothesisId":"G","timestamp":1765890380854.759,"data":{"category":"AVAudioSessionCategoryPlayback","mode":"AVAudioSessionModeSpokenAudio"},"message":"Audio session configured successfully"}
+{"location":"NowPlayingManager.swift:30","sessionId":"debug-session","hypothesisId":"F","timestamp":1765890380855.0701,"data":{"category":"AVAudioSessionCategoryPlayback","audioSessionActive":true},"message":"setupRemoteCommands started"}
+{"message":"setupRemoteCommands completed","timestamp":1765890380855.8391,"data":{},"sessionId":"debug-session","hypothesisId":"A","location":"NowPlayingManager.swift:24"}
+{"hypothesisId":"C","timestamp":1765890381105.219,"data":{},"location":"AudioPlayer.swift:49","sessionId":"debug-session","message":"Setting audio session category"}
+{"hypothesisId":"C","sessionId":"debug-session","timestamp":1765890381105.8069,"location":"AudioPlayer.swift:56","message":"Audio session configured","data":{"category":"AVAudioSessionCategoryPlayback","mode":"AVAudioSessionModeSpokenAudio","isActive":true}}

@@ -248,6 +248,13 @@ final class AppDatabase: Sendable {
             }
         }
         
+        // Migration v9: Add cachedArtworkURL for image cache tracking
+        migrator.registerMigration("v9_cached_artwork_url") { db in
+            try db.alter(table: "podcast") { t in
+                t.add(column: "cachedArtworkURL", .text)
+            }
+        }
+        
         return migrator
     }
 }

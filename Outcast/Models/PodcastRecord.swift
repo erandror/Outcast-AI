@@ -17,6 +17,7 @@ struct PodcastRecord: Identifiable, Codable, Sendable, Hashable {
     var author: String?
     var podcastDescription: String?
     var artworkURL: String?
+    var cachedArtworkURL: String?
     var homePageURL: String?
     var lastRefreshDate: Date?
     var contentHash: String?
@@ -47,6 +48,7 @@ struct PodcastRecord: Identifiable, Codable, Sendable, Hashable {
         author: String? = nil,
         podcastDescription: String? = nil,
         artworkURL: String? = nil,
+        cachedArtworkURL: String? = nil,
         homePageURL: String? = nil,
         lastRefreshDate: Date? = nil,
         contentHash: String? = nil,
@@ -74,6 +76,7 @@ struct PodcastRecord: Identifiable, Codable, Sendable, Hashable {
         self.author = author
         self.podcastDescription = podcastDescription
         self.artworkURL = artworkURL
+        self.cachedArtworkURL = cachedArtworkURL
         self.homePageURL = homePageURL
         self.lastRefreshDate = lastRefreshDate
         self.contentHash = contentHash

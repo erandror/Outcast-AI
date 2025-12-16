@@ -114,33 +114,13 @@ struct EpisodeView: View {
     // MARK: - Artwork
     
     private var artworkSection: some View {
-        ZStack {
-            if let artworkURL = episode.episode.imageURL ?? episode.podcast.artworkURL,
-               let url = URL(string: artworkURL) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    artworkPlaceholder
-                }
-            } else {
-                artworkPlaceholder
-            }
-        }
+        EpisodeArtwork(
+            episode: episode.episode,
+            podcast: episode.podcast,
+            size: .large
+        )
         .frame(width: 280, height: 280)
-        .cornerRadius(12)
-        .clipped()
         .shadow(color: .white.opacity(0.1), radius: 20)
-    }
-    
-    private var artworkPlaceholder: some View {
-        ZStack {
-            Color(hexString: episode.podcast.artworkColor ?? "#4ECDC4")
-            Text(String(episode.podcast.title.prefix(1)))
-                .font(.system(size: 72, weight: .bold))
-                .foregroundStyle(.white)
-        }
     }
     
     // MARK: - Episode Info

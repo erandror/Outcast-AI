@@ -17,23 +17,13 @@ struct ShowHeaderView: View {
             // Artwork and title section
             VStack(spacing: 20) {
                 // Artwork
-                ZStack {
-                    if let artworkURL = podcast.artworkURL,
-                       let url = URL(string: artworkURL) {
-                        AsyncImage(url: url) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
-                            artworkPlaceholder
-                        }
-                    } else {
-                        artworkPlaceholder
-                    }
-                }
-                .frame(width: isExpanded ? 200 : 100, height: isExpanded ? 200 : 100)
-                .cornerRadius(8)
-                .clipped()
+                PodcastArtwork(
+                    artworkURL: podcast.artworkURL,
+                    placeholderColor: podcast.artworkColor,
+                    placeholderTitle: podcast.title,
+                    size: isExpanded ? .large : .medium
+                )
+                .frame(width: isExpanded ? 200 : 150, height: isExpanded ? 200 : 150)
                 .shadow(color: .white.opacity(0.1), radius: 20)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isExpanded)
                 
@@ -99,15 +89,6 @@ struct ShowHeaderView: View {
                 .padding(.bottom, 24)
         }
         .background(Color.black)
-    }
-    
-    private var artworkPlaceholder: some View {
-        ZStack {
-            Color(hexString: podcast.artworkColor ?? "#4ECDC4")
-            Text(String(podcast.title.prefix(1)))
-                .font(.system(size: isExpanded ? 72 : 36, weight: .bold))
-                .foregroundStyle(.white)
-        }
     }
     
     @ViewBuilder

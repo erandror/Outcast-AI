@@ -43,6 +43,13 @@ struct ContentView: View {
     // Scroll tracking state
     @State private var lastScrollOffset: CGFloat = 0
     @State private var showHeader = true
+    
+    // Pagination state
+    @State private var currentOffset: Int = 0
+    @State private var isLoadingMore: Bool = false
+    @State private var hasMoreEpisodes: Bool = true
+    
+    private let pageSize: Int = 50
 
     var body: some View {
         NavigationStack {
@@ -253,6 +260,22 @@ struct ContentView: View {
                                 .frame(height: 1)
                                 .padding(.leading, 20)
                         }
+                        
+                        // Pagination trigger - load more when this appears
+                        if hasMoreEpisodes {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .padding(.vertical, 20)
+                                Spacer()
+                            }
+                            .onAppear {
+                                Task {
+                                    await loadMoreEpisodes()
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -427,15 +450,48 @@ struct ContentView: View {
     
     private func loadEpisodes() async {
         do {
+            // Reset pagination state
+            currentOffset = 0
+            hasMoreEpisodes = true
+            
             let filter = selectedFilter // Capture filter before async
             let loaded = try await AppDatabase.shared.readAsync { db in
-                try EpisodeWithPodcast.fetchFiltered(filter: filter, limit: 100, db: db)
+                try EpisodeWithPodcast.fetchFiltered(filter: filter, limit: pageSize, offset: 0, db: db)
             }
             await MainActor.run {
                 episodes = loaded
+                currentOffset = loaded.count
+                // If we got fewer episodes than requested, we've reached the end
+                hasMoreEpisodes = loaded.count >= pageSize
             }
         } catch {
             print("Failed to load episodes: \(error)")
+        }
+    }
+    
+    private func loadMoreEpisodes() async {
+        // Prevent duplicate fetches
+        guard !isLoadingMore && hasMoreEpisodes else { return }
+        
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        
+        do {
+            let filter = selectedFilter // Capture filter before async
+            let offset = currentOffset // Capture offset before async
+            
+            let loaded = try await AppDatabase.shared.readAsync { db in
+                try EpisodeWithPodcast.fetchFiltered(filter: filter, limit: pageSize, offset: offset, db: db)
+            }
+            
+            await MainActor.run {
+                episodes.append(contentsOf: loaded)
+                currentOffset += loaded.count
+                // If we got fewer episodes than requested, we've reached the end
+                hasMoreEpisodes = loaded.count >= pageSize
+            }
+        } catch {
+            print("Failed to load more episodes: \(error)")
         }
     }
     
@@ -501,11 +557,11 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     
     var id: String { episode.uuid }
     
-    static func fetchLatest(limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    static func fetchLatest(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         let request = EpisodeRecord
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
-            .limit(limit)
+            .limit(limit, offset: offset)
         
         return try Row.fetchAll(db, request).map { row in
             EpisodeWithPodcast(
@@ -531,42 +587,42 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         }
     }
     
-    static func fetchFiltered(filter: ListenFilter, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    static func fetchFiltered(filter: ListenFilter, limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         switch filter {
         case .standard(let forYouFilter):
-            return try fetchFilteredByForYouFilter(filter: forYouFilter, limit: limit, db: db)
+            return try fetchFilteredByForYouFilter(filter: forYouFilter, limit: limit, offset: offset, db: db)
         case .topic(let tag):
             guard let tagId = tag.id else {
                 print("[TAGGER] ⚠️ Topic tag has no ID")
                 return []
             }
-            return try fetchByTopicTag(tagId: tagId, limit: limit, db: db)
+            return try fetchByTopicTag(tagId: tagId, limit: limit, offset: offset, db: db)
         }
     }
     
-    private static func fetchFilteredByForYouFilter(filter: ForYouFilter, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    private static func fetchFilteredByForYouFilter(filter: ForYouFilter, limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         switch filter {
         case .upNext:
-            return try fetchUpNext(limit: limit, db: db)
+            return try fetchUpNext(limit: limit, offset: offset, db: db)
         case .latest:
-            return try fetchLatest(limit: limit, db: db)
+            return try fetchLatest(limit: limit, offset: offset, db: db)
         case .short:
-            return try fetchShort(limit: limit, db: db)
+            return try fetchShort(limit: limit, offset: offset, db: db)
         case .friendly, .funny, .interesting, .captivating, .conversations, .timely:
-            return try fetchByKeywordsAndCategories(filter: filter, limit: limit, db: db)
+            return try fetchByKeywordsAndCategories(filter: filter, limit: limit, offset: offset, db: db)
         }
     }
     
     // MARK: - Up Next (unplayed episodes from podcasts marked as Up Next)
     
-    private static func fetchUpNext(limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    private static func fetchUpNext(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         // Fetch unplayed episodes from podcasts where isUpNext is true
         let request = EpisodeRecord
             .filter(Column("playingStatus") == PlayingStatus.notPlayed.rawValue)
             .joining(required: EpisodeRecord.podcast.filter(Column("isUpNext") == true))
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
-            .limit(limit)
+            .limit(limit, offset: offset)
         
         return try Row.fetchAll(db, request).map { row in
             EpisodeWithPodcast(
@@ -578,13 +634,13 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     
     // MARK: - Short (under 25 minutes)
     
-    private static func fetchShort(limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    private static func fetchShort(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         let request = EpisodeRecord
             .filter(Column("duration") < 1500) // 25 minutes in seconds
             .filter(Column("duration") > 0) // Exclude episodes with no duration
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
-            .limit(limit)
+            .limit(limit, offset: offset)
         
         return try Row.fetchAll(db, request).map { row in
             EpisodeWithPodcast(
@@ -635,10 +691,10 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         )
     }
     
-    private static func fetchByKeywordsAndCategories(filter: ForYouFilter, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    private static func fetchByKeywordsAndCategories(filter: ForYouFilter, limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         // Check if this filter uses mood tags
         if let moodTagName = filter.moodTagName {
-            return try fetchByMoodTag(moodTagName: moodTagName, limit: limit, db: db)
+            return try fetchByMoodTag(moodTagName: moodTagName, limit: limit, offset: offset, db: db)
         }
         
         // Otherwise, use the legacy keyword/category matching
@@ -727,10 +783,11 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
             INNER JOIN podcast ON episode.podcastID = podcast.uuid
             \(whereClause)
             ORDER BY episode.publishedDate DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """
         
         arguments.append(limit)
+        arguments.append(offset)
         
         let statement = try db.makeStatement(sql: sql)
         let rows = try Row.fetchAll(statement, arguments: StatementArguments(arguments))
@@ -741,7 +798,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     
     // MARK: - Mood Tag Based Filtering
     
-    private static func fetchByMoodTag(moodTagName: String, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    private static func fetchByMoodTag(moodTagName: String, limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         print("[TAGGER] 🔍 Querying episodes for mood tag: '\(moodTagName)'")
         
         // Get episode IDs that have the mood tag
@@ -764,7 +821,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
             .filter(keys: episodeIds)
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
-            .limit(limit)
+            .limit(limit, offset: offset)
         
         let rows = try Row.fetchAll(db, request)
         
@@ -781,7 +838,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     
     // MARK: - Topic Tag Based Filtering
     
-    private static func fetchByTopicTag(tagId: Int64, limit: Int, db: Database) throws -> [EpisodeWithPodcast] {
+    private static func fetchByTopicTag(tagId: Int64, limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         print("[TAGGER] 🔍 Querying episodes for topic tag ID: \(tagId)")
         
         // Get episode IDs that have the topic tag
@@ -802,7 +859,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
             .filter(keys: episodeIds)
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
-            .limit(limit)
+            .limit(limit, offset: offset)
         
         let rows = try Row.fetchAll(db, request)
         

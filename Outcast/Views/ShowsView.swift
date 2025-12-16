@@ -13,11 +13,23 @@ struct ShowsView: View {
     
     @State private var podcasts: [PodcastRecord] = []
     @State private var isLoading = true
+    @State private var selectedFilter: ShowsFilter = .allShows
+    @State private var gridRefreshID = UUID()
     
     // Adaptive columns: 2 on iPhone, 3 on iPad
     private let columns = [
         GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)
     ]
+    
+    // Filter podcasts based on selected filter
+    private var filteredPodcasts: [PodcastRecord] {
+        switch selectedFilter {
+        case .allShows:
+            return podcasts
+        case .upNext:
+            return podcasts.filter { $0.isUpNext }
+        }
+    }
     
     var body: some View {
         Group {
@@ -28,23 +40,28 @@ struct ShowsView: View {
             } else if podcasts.isEmpty {
                 emptyStateView
             } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 24) {
-                        ForEach(podcasts) { podcast in
-                            PodcastGridCell(
-                                podcast: podcast,
-                                onTap: {
-                                    onSelectPodcast(podcast)
-                                },
-                                onToggleUpNext: {
-                                    Task {
-                                        await toggleUpNext(for: podcast)
+                VStack(spacing: 0) {
+                    // Filter bar
+                    ShowsFilterBar(selectedFilter: $selectedFilter)
+                    
+                    // Podcasts grid
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 24) {
+                            ForEach(filteredPodcasts) { podcast in
+                                PodcastGridCell(
+                                    podcast: podcast,
+                                    onTap: {
+                                        onSelectPodcast(podcast)
+                                    },
+                                    onToggleUpNext: {
+                                        toggleUpNext(for: podcast)
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
+                        .padding(20)
+                        .id(gridRefreshID) // Force grid re-render when toggling
                     }
-                    .padding(20)
                 }
             }
         }
@@ -90,20 +107,88 @@ struct ShowsView: View {
         }
     }
     
-    private func toggleUpNext(for podcast: PodcastRecord) async {
-        do {
-            // Toggle in database
-            try await AppDatabase.shared.writeAsync { db in
-                var updatedPodcast = podcast
-                updatedPodcast.isUpNext.toggle()
-                try updatedPodcast.update(db)
+    @MainActor
+    private func toggleUpNext(for podcast: PodcastRecord) {
+        // OPTIMISTIC UPDATE: Update UI first, then persist to database
+        guard let index = podcasts.firstIndex(where: { $0.uuid == podcast.uuid }) else { return }
+        
+        let newValue = !podcasts[index].isUpNext
+        
+        // Update UI immediately - use explicit array replacement to trigger @State
+        var updatedPodcast = podcasts[index]
+        updatedPodcast.isUpNext = newValue
+        podcasts.remove(at: index)
+        podcasts.insert(updatedPodcast, at: index)
+        
+        // Force ForEach to re-iterate by changing grid identity
+        gridRefreshID = UUID()
+        
+        // Persist to database in background (fire and forget)
+        let podcastUUID = podcast.uuid
+        Task.detached {
+            do {
+                try await AppDatabase.shared.writeAsync { db in
+                    if var dbPodcast = try PodcastRecord.fetchByUUID(podcastUUID, db: db) {
+                        dbPodcast.isUpNext = newValue
+                        try dbPodcast.update(db)
+                    }
+                }
+            } catch {
+                print("Failed to persist Up Next toggle: \(error)")
             }
-            
-            // Reload podcasts to reflect the change
-            await loadPodcasts()
-        } catch {
-            print("Failed to toggle Up Next: \(error)")
         }
+    }
+}
+
+// MARK: - Shows Filter Bar
+
+private struct ShowsFilterBar: View {
+    @Binding var selectedFilter: ShowsFilter
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(ShowsFilter.allCases, id: \.self) { filter in
+                FilterTab(
+                    filter: filter,
+                    isSelected: selectedFilter == filter
+                ) {
+                    selectedFilter = filter
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(Color.black)
+    }
+}
+
+private struct FilterTab: View {
+    let filter: ShowsFilter
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(filter.emoji)
+                    .font(.system(size: 16))
+                
+                Text(filter.label)
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(isSelected ? Color.white.opacity(0.15) : Color.white.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isSelected ? Color.white.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
+            .foregroundColor(.white)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -120,30 +205,12 @@ private struct PodcastGridCell: View {
             Button(action: onTap) {
                 ZStack(alignment: .bottomTrailing) {
                     // Artwork
-                    if let artworkURL = podcast.artworkURL,
-                       let url = URL(string: artworkURL) {
-                        CachedAsyncImage(
-                            url: url,
-                            content: { image in
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                            },
-                            placeholder: {
-                                artworkPlaceholder
-                            }
-                        )
-                    } else {
-                        artworkPlaceholder
-                    }
+                    PodcastArtwork(podcast: podcast, size: .medium)
                     
                     // Up Next badge overlay
                     upNextBadge
                         .padding(8)
                 }
-                .frame(width: 150, height: 150)
-                .cornerRadius(8)
-                .clipped()
             }
             .buttonStyle(.plain)
             
@@ -157,15 +224,6 @@ private struct PodcastGridCell: View {
                 .frame(height: 40)
         }
         .frame(maxWidth: .infinity)
-    }
-    
-    private var artworkPlaceholder: some View {
-        ZStack {
-            Color(hexString: podcast.artworkColor ?? "#4ECDC4")
-            Text(String(podcast.title.prefix(1)))
-                .font(.system(size: 48, weight: .bold))
-                .foregroundStyle(.white)
-        }
     }
     
     private var upNextBadge: some View {
@@ -187,4 +245,3 @@ private struct PodcastGridCell: View {
 #Preview {
     ShowsView(onSelectPodcast: { _ in })
 }
-

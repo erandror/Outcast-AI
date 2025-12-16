@@ -16,28 +16,8 @@ struct MiniPlayer: View {
            let podcast = playbackManager.currentPodcast {
             HStack(spacing: 12) {
                 // Artwork
-                if let artworkURL = podcast.artworkURL,
-                   let url = URL(string: artworkURL) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.1))
-                    }
+                PodcastArtwork(podcast: podcast, size: .small)
                     .frame(width: 48, height: 48)
-                    .cornerRadius(4)
-                } else {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.1))
-                        .frame(width: 48, height: 48)
-                        .cornerRadius(4)
-                        .overlay(
-                            Image(systemName: "music.note")
-                                .foregroundStyle(.white.opacity(0.3))
-                        )
-                }
                 
                 // Episode info
                 VStack(alignment: .leading, spacing: 4) {

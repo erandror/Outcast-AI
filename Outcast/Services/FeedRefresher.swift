@@ -131,6 +131,10 @@ actor FeedRefresher {
         let parseResult = try parser.parse(data: data)
         let parsedFeed = parseResult.podcast
         
+        // Check if artwork changed (before transaction)
+        let artworkChanged = parsedFeed.artworkURL != podcast.cachedArtworkURL && 
+                            parsedFeed.artworkURL != nil
+        
         // Update podcast and save new episodes
         let (newEpisodeCount, newEpisodeIds) = try await database.writeAsync { db -> (Int, [Int64]) in
             // Update podcast metadata
@@ -156,6 +160,12 @@ actor FeedRefresher {
             updatedPodcast.fundingURL = parsedFeed.fundingURL
             updatedPodcast.htmlDescription = parsedFeed.htmlDescription
             updatedPodcast.categories = parsedFeed.categories
+            
+            // Check if artwork URL changed
+            let artworkChanged = parsedFeed.artworkURL != podcast.cachedArtworkURL
+            if artworkChanged && parsedFeed.artworkURL != nil {
+                updatedPodcast.cachedArtworkURL = parsedFeed.artworkURL
+            }
             
             try updatedPodcast.update(db)
             
@@ -206,6 +216,17 @@ actor FeedRefresher {
         // Queue episodes for AI tagging
         if !newEpisodeIds.isEmpty {
             await EpisodeTagger.shared.queueForTagging(episodeIds: newEpisodeIds)
+        }
+        
+        // Handle artwork changes
+        if artworkChanged, let newArtworkURL = parsedFeed.artworkURL {
+            // Clear old cached artwork
+            if let oldArtworkURL = podcast.cachedArtworkURL {
+                await ArtworkCache.shared.clearCache(for: podcast.uuid, url: oldArtworkURL)
+            }
+            
+            // Prefetch new artwork
+            await ArtworkCache.shared.prefetch(url: newArtworkURL, for: podcast.uuid)
         }
         
         return newEpisodeCount
@@ -334,6 +355,18 @@ actor FeedRefresher {
         // Queue episodes for AI tagging
         if !episodeIds.isEmpty {
             await EpisodeTagger.shared.queueForTagging(episodeIds: episodeIds)
+        }
+        
+        // Prefetch artwork and update cached URL
+        if let artworkURL = podcast.artworkURL {
+            await ArtworkCache.shared.prefetch(url: artworkURL, for: podcast.uuid)
+            
+            // Update cachedArtworkURL in database
+            try? await database.writeAsync { db in
+                var updatedPodcast = podcast
+                updatedPodcast.cachedArtworkURL = artworkURL
+                try updatedPodcast.update(db)
+            }
         }
         
         return (podcast, data, httpResponse, parseResult.hasMoreEpisodes)

@@ -194,23 +194,12 @@ struct PlayerView: View {
             Spacer()
             
             // Artwork
-            ZStack {
-                if let artworkURL = episode.episode.imageURL ?? episode.podcast.artworkURL,
-                   let url = URL(string: artworkURL) {
-                    CachedAsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        artworkPlaceholder(for: episode)
-                    }
-                } else {
-                    artworkPlaceholder(for: episode)
-                }
-            }
+            EpisodeArtwork(
+                episode: episode.episode,
+                podcast: episode.podcast,
+                size: .large
+            )
             .frame(width: 280, height: 280)
-            .cornerRadius(8)
-            .clipped()
             .shadow(color: .white.opacity(0.1), radius: 20)
             
             // Episode info
@@ -297,15 +286,6 @@ struct PlayerView: View {
         .offset(y: offset)
     }
     
-    private func artworkPlaceholder(for episode: EpisodeWithPodcast) -> some View {
-        ZStack {
-            Color(hexString: episode.podcast.artworkColor ?? "#4ECDC4")
-            Text(String(episode.podcast.title.prefix(1)))
-                .font(.system(size: 72, weight: .bold))
-                .foregroundStyle(.white)
-        }
-    }
-    
     private func loadCurrentEpisode() async {
         do {
             try await playbackManager.load(episode: currentEpisode.episode, autoPlay: true)
@@ -315,18 +295,18 @@ struct PlayerView: View {
     }
     
     private func prefetchAdjacentImages() async {
-        var urlsToPrefetch: [String] = []
+        var urlsToIdentifiers: [(url: String, identifier: String)] = []
         
         // Current episode image
         if let artworkURL = currentEpisode.episode.imageURL ?? currentEpisode.podcast.artworkURL {
-            urlsToPrefetch.append(artworkURL)
+            urlsToIdentifiers.append((artworkURL, currentEpisode.episode.uuid))
         }
         
         // Previous episode image
         if hasPrevious {
             let prevEpisode = episodes[currentIndex - 1]
             if let artworkURL = prevEpisode.episode.imageURL ?? prevEpisode.podcast.artworkURL {
-                urlsToPrefetch.append(artworkURL)
+                urlsToIdentifiers.append((artworkURL, prevEpisode.episode.uuid))
             }
         }
         
@@ -334,11 +314,11 @@ struct PlayerView: View {
         if hasNext {
             let nextEpisode = episodes[currentIndex + 1]
             if let artworkURL = nextEpisode.episode.imageURL ?? nextEpisode.podcast.artworkURL {
-                urlsToPrefetch.append(artworkURL)
+                urlsToIdentifiers.append((artworkURL, nextEpisode.episode.uuid))
             }
         }
         
-        await ImageCache.shared.prefetchBatch(urlsToPrefetch)
+        await ArtworkCache.shared.prefetchBatch(urls: urlsToIdentifiers)
     }
     
     private func formatTime(_ time: TimeInterval) -> String {

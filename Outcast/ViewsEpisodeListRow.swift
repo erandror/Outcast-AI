@@ -14,31 +14,13 @@ struct EpisodeListRow: View {
     let onTapEpisode: () -> Void
     let onToggleUpNext: () -> Void
     
-    private let artworkSize: CGFloat = 110
-    
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Artwork - fixed size
-            ZStack {
-                if let artworkURL = episode.podcast.artworkURL,
-                   let url = URL(string: artworkURL) {
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        artworkPlaceholder
-                    }
-                } else {
-                    artworkPlaceholder
+            PodcastArtwork(podcast: episode.podcast, size: .episodeRow)
+                .onTapGesture {
+                    onTapEpisode()
                 }
-            }
-            .frame(width: artworkSize, height: artworkSize)
-            .cornerRadius(4)
-            .clipped()
-            .onTapGesture {
-                onTapEpisode()
-            }
             
             // Episode info - full width to the right of artwork
             VStack(alignment: .leading, spacing: 4) {
@@ -124,16 +106,6 @@ struct EpisodeListRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-    }
-    
-    private var artworkPlaceholder: some View {
-        ZStack {
-            Color(hexString: episode.podcast.artworkColor ?? "#4ECDC4")
-            Text(String(episode.podcast.title.prefix(1)))
-                .font(.title)
-                .fontWeight(.bold)
-                .foregroundStyle(.white)
-        }
     }
     
     private var playButtonIcon: String {
