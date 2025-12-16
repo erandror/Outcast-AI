@@ -103,13 +103,10 @@ struct HistoryEpisodeRow: View {
     let onPlay: () -> Void
     let onTapEpisode: () -> Void
     
-    private let artworkSize: CGFloat = 110
-    
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Artwork - fixed size
-            PodcastArtwork(podcast: episode.podcast, size: .medium)
-                .frame(width: artworkSize, height: artworkSize)
+            PodcastArtwork(podcast: episode.podcast, size: .episodeRow)
                 .onTapGesture {
                     onTapEpisode()
                 }
