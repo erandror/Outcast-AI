@@ -79,6 +79,10 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
     // AI tagging
     var needsTagging: Bool
     
+    // Saved episodes
+    var isSaved: Bool
+    var savedAt: Date?
+    
     init(
         id: Int64? = nil,
         uuid: String = UUID().uuidString,
@@ -114,7 +118,9 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         downloadTaskIdentifier: String? = nil,
         downloadError: String? = nil,
         autoDownloadStatus: AutoDownloadStatus = .notSpecified,
-        needsTagging: Bool = true
+        needsTagging: Bool = true,
+        isSaved: Bool = false,
+        savedAt: Date? = nil
     ) {
         self.id = id
         self.uuid = uuid
@@ -151,6 +157,8 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         self.downloadError = downloadError
         self.autoDownloadStatus = autoDownloadStatus
         self.needsTagging = needsTagging
+        self.isSaved = isSaved
+        self.savedAt = savedAt
     }
 }
 
@@ -296,6 +304,22 @@ extension EpisodeRecord {
     mutating func markTaggingComplete(db: Database) throws {
         needsTagging = false
         try update(db)
+    }
+    
+    /// Toggle saved state
+    mutating func toggleSaved(db: Database) throws {
+        isSaved.toggle()
+        savedAt = isSaved ? Date() : nil
+        try update(db)
+    }
+    
+    /// Fetch saved episodes, ordered by saved date (most recent first)
+    static func fetchSaved(limit: Int = 50, offset: Int = 0, db: Database) throws -> [EpisodeRecord] {
+        try EpisodeRecord
+            .filter(Column("isSaved") == true)
+            .order(Column("savedAt").desc)
+            .limit(limit, offset: offset)
+            .fetchAll(db)
     }
 }
 

@@ -10,6 +10,7 @@ import Foundation
 /// Filter options for the For You page
 enum ForYouFilter: String, CaseIterable, Sendable {
     case upNext
+    case saved
     case latest
     case short
     case friendly
@@ -23,6 +24,7 @@ enum ForYouFilter: String, CaseIterable, Sendable {
     var emoji: String {
         switch self {
         case .upNext: return "⏭️"
+        case .saved: return "🔖"
         case .latest: return "🆕"
         case .short: return "⚡"
         case .friendly: return "☀️"
@@ -38,6 +40,7 @@ enum ForYouFilter: String, CaseIterable, Sendable {
     var label: String {
         switch self {
         case .upNext: return "Up Next"
+        case .saved: return "Saved"
         case .latest: return "Latest"
         case .short: return "Short"
         case .friendly: return "Friendly"
@@ -52,7 +55,7 @@ enum ForYouFilter: String, CaseIterable, Sendable {
     /// iTunes/Apple Podcasts categories that match this filter
     var categories: [String] {
         switch self {
-        case .upNext, .latest, .short:
+        case .upNext, .saved, .latest, .short:
             return []
         case .friendly:
             return ["Personal Journals", "Self-Improvement", "Relationships", "Leisure"]
@@ -72,7 +75,7 @@ enum ForYouFilter: String, CaseIterable, Sendable {
     /// Keywords to search for in titles and descriptions (case-insensitive)
     var keywords: [String] {
         switch self {
-        case .upNext, .latest, .short:
+        case .upNext, .saved, .latest, .short:
             return []
         case .friendly:
             return ["friends", "chat", "cozy", "casual", "vibes", "hang out", "chill"]
@@ -126,7 +129,7 @@ enum ForYouFilter: String, CaseIterable, Sendable {
             return "Conversations"
         case .timely:
             return "Timely"
-        case .upNext, .latest, .short:
+        case .upNext, .saved, .latest, .short:
             return nil
         }
     }

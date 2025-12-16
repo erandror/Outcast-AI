@@ -127,9 +127,21 @@ struct ContentView: View {
                 PlayerView(episodes: episodes, startIndex: index)
             }
         }
+        .onChange(of: selectedEpisodeForPlayer) { oldValue, newValue in
+            if oldValue != nil && newValue == nil {
+                // Player was dismissed, reload to get updated saved state
+                Task { await loadEpisodes() }
+            }
+        }
         .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
             if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
                 EpisodeView(episodes: episodes, startIndex: index)
+            }
+        }
+        .onChange(of: selectedEpisodeForDetail) { oldValue, newValue in
+            if oldValue != nil && newValue == nil {
+                // Episode detail was dismissed, reload to get updated saved state
+                Task { await loadEpisodes() }
             }
         }
         .sheet(isPresented: $showImport) {
@@ -551,11 +563,15 @@ struct ContentView: View {
 
 // MARK: - Episode with Podcast Info
 
-struct EpisodeWithPodcast: Identifiable, Sendable {
+struct EpisodeWithPodcast: Identifiable, Sendable, Equatable {
     let episode: EpisodeRecord
     let podcast: PodcastRecord
     
     var id: String { episode.uuid }
+    
+    static func == (lhs: EpisodeWithPodcast, rhs: EpisodeWithPodcast) -> Bool {
+        lhs.episode.uuid == rhs.episode.uuid && lhs.podcast.uuid == rhs.podcast.uuid
+    }
     
     static func fetchLatest(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         let request = EpisodeRecord
@@ -604,6 +620,8 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         switch filter {
         case .upNext:
             return try fetchUpNext(limit: limit, offset: offset, db: db)
+        case .saved:
+            return try fetchSaved(limit: limit, offset: offset, db: db)
         case .latest:
             return try fetchLatest(limit: limit, offset: offset, db: db)
         case .short:
@@ -622,6 +640,24 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
             .joining(required: EpisodeRecord.podcast.filter(Column("isUpNext") == true))
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
+            .limit(limit, offset: offset)
+        
+        return try Row.fetchAll(db, request).map { row in
+            EpisodeWithPodcast(
+                episode: try EpisodeRecord(row: row),
+                podcast: try PodcastRecord(row: row.scopes["podcast"]!)
+            )
+        }
+    }
+    
+    // MARK: - Saved (saved episodes ordered by saved date)
+    
+    private static func fetchSaved(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
+        // Fetch saved episodes ordered by savedAt (most recent first)
+        let request = EpisodeRecord
+            .filter(Column("isSaved") == true)
+            .including(required: EpisodeRecord.podcast)
+            .order(Column("savedAt").desc)
             .limit(limit, offset: offset)
         
         return try Row.fetchAll(db, request).map { row in
@@ -660,10 +696,11 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         "audioMimeType", "fileSize", "duration", "publishedDate", "imageURL",
         "episodeNumber", "seasonNumber", "episodeType", "link", "explicit",
         "subtitle", "author", "contentHTML", "chaptersURL", "transcripts",
-        "playedUpTo", "playingStatus", "isDownloaded", "downloadedPath",
+        "playedUpTo", "playingStatus", "lastPlayedAt", "isDownloaded", "downloadedPath",
         "downloadStatus", "downloadProgress", "localFilePath", "downloadedFileSize",
         "downloadTaskIdentifier", "downloadError", "autoDownloadStatus",
-        "needsTagging"  // Added in v6 migration - was missing!
+        "needsTagging",  // Added in v6 migration
+        "isSaved", "savedAt"  // Added in v10 migration
     ]
     
     // Helper function to parse a flattened row into EpisodeWithPodcast

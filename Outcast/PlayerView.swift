@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import GRDB
 
 struct PlayerView: View {
     let episodes: [EpisodeWithPodcast]
@@ -17,6 +18,7 @@ struct PlayerView: View {
     @State private var currentIndex: Int
     @State private var dragOffset: CGFloat = 0
     @State private var isAnimating = false
+    @State private var isCurrentEpisodeSaved: Bool = false
     
     init(episodes: [EpisodeWithPodcast], startIndex: Int) {
         self.episodes = episodes
@@ -278,6 +280,16 @@ struct PlayerView: View {
                         .font(.title)
                         .foregroundStyle(.white)
                 }
+                
+                Button {
+                    Task {
+                        await toggleSaved()
+                    }
+                } label: {
+                    Image(systemName: isCurrentEpisodeSaved ? "bookmark.fill" : "bookmark")
+                        .font(.title)
+                        .foregroundStyle(.white)
+                }
             }
             
             // Bottom spacer
@@ -289,8 +301,37 @@ struct PlayerView: View {
     private func loadCurrentEpisode() async {
         do {
             try await playbackManager.load(episode: currentEpisode.episode, autoPlay: true)
+            // Fetch fresh saved state from database
+            if let episodeId = currentEpisode.episode.id {
+                let freshIsSaved = try await AppDatabase.shared.readAsync { db in
+                    try EpisodeRecord.fetchOne(db, key: episodeId)?.isSaved ?? false
+                }
+                await MainActor.run {
+                    isCurrentEpisodeSaved = freshIsSaved
+                }
+            } else {
+                isCurrentEpisodeSaved = currentEpisode.episode.isSaved
+            }
         } catch {
             print("Failed to load episode: \(error)")
+            isCurrentEpisodeSaved = currentEpisode.episode.isSaved
+        }
+    }
+    
+    private func toggleSaved() async {
+        do {
+            // Update database
+            try await AppDatabase.shared.writeAsync { db in
+                var updatedEpisode = currentEpisode.episode
+                try updatedEpisode.toggleSaved(db: db)
+            }
+            
+            // Update local state
+            await MainActor.run {
+                isCurrentEpisodeSaved.toggle()
+            }
+        } catch {
+            print("Failed to toggle saved state: \(error)")
         }
     }
     

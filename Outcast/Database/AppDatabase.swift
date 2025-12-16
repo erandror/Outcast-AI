@@ -255,6 +255,16 @@ final class AppDatabase: Sendable {
             }
         }
         
+        // Migration v10: Add saved episodes feature
+        migrator.registerMigration("v10_saved_episodes") { db in
+            try db.alter(table: "episode") { t in
+                t.add(column: "isSaved", .boolean).notNull().defaults(to: false)
+                t.add(column: "savedAt", .datetime)
+            }
+            try db.create(index: "episode_isSaved", on: "episode", columns: ["isSaved"])
+            try db.create(index: "episode_savedAt", on: "episode", columns: ["savedAt"])
+        }
+        
         return migrator
     }
 }

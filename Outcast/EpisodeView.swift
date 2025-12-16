@@ -16,6 +16,7 @@ struct EpisodeView: View {
     @State private var showPlayer = false
     @State private var showPodcastDetail = false
     @State private var playbackProgress: Double = 0
+    @State private var isSaved: Bool = false
     @ObservedObject private var playbackManager = PlaybackManager.shared
     
     private var episode: EpisodeWithPodcast {
@@ -55,8 +56,24 @@ struct EpisodeView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .onAppear {
+        .task {
             calculateProgress()
+            // Fetch fresh saved state from database
+            if let episodeId = episode.episode.id {
+                do {
+                    let freshIsSaved = try await AppDatabase.shared.readAsync { db in
+                        try EpisodeRecord.fetchOne(db, key: episodeId)?.isSaved ?? false
+                    }
+                    await MainActor.run {
+                        isSaved = freshIsSaved
+                    }
+                } catch {
+                    print("Failed to fetch saved state: \(error)")
+                    isSaved = episode.episode.isSaved
+                }
+            } else {
+                isSaved = episode.episode.isSaved
+            }
         }
         .fullScreenCover(isPresented: $showPlayer) {
             PlayerView(episodes: episodes, startIndex: startIndex)
@@ -231,11 +248,11 @@ struct EpisodeView: View {
             }
             
             HStack(spacing: 12) {
-                // Add to queue button
+                // Save for later button
                 actionButton(
-                    icon: "text.line.first.and.arrowtriangle.forward",
-                    title: "Add to Queue",
-                    action: { addToQueueAction() }
+                    icon: isSaved ? "bookmark.fill" : "bookmark",
+                    title: isSaved ? "Saved" : "Save for Later",
+                    action: { toggleSaveAction() }
                 )
                 
                 // Archive button
@@ -377,9 +394,21 @@ struct EpisodeView: View {
         }
     }
     
-    private func addToQueueAction() {
-        // TODO: Implement queue functionality
-        print("Add to queue action")
+    private func toggleSaveAction() {
+        Task {
+            do {
+                try await AppDatabase.shared.writeAsync { db in
+                    var updatedEpisode = episode.episode
+                    try updatedEpisode.toggleSaved(db: db)
+                }
+                
+                await MainActor.run {
+                    isSaved.toggle()
+                }
+            } catch {
+                print("Failed to toggle saved state: \(error)")
+            }
+        }
     }
     
     private func archiveAction() {
