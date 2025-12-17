@@ -42,6 +42,10 @@ class NowPlayingManager {
     private let commandCenter = MPRemoteCommandCenter.shared()
     private let nowPlayingInfo = MPNowPlayingInfoCenter.default()
     
+    // Artwork cache to prevent re-downloading on every update
+    private var cachedArtwork: MPMediaItemArtwork?
+    private var cachedArtworkURL: String?
+    
     private init() {
         // #region agent log
         debugLog(location: "NowPlayingManager.swift:20", message: "NowPlayingManager init called", data: [:], hypothesisId: "A")
@@ -228,19 +232,39 @@ class NowPlayingManager {
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPNowPlayingInfoPropertyIsLiveStream] = false
         
-        // Artwork - load asynchronously
-        if let artworkURLString = episode.imageURL ?? podcast.artworkURL,
-           let artworkURL = URL(string: artworkURLString) {
+        // Artwork - use cache if available, otherwise load asynchronously
+        let artworkURLString = episode.imageURL ?? podcast.artworkURL
+        
+        // Check if we have cached artwork for this URL
+        if let artworkURLString = artworkURLString, artworkURLString == cachedArtworkURL, let cachedArtwork = cachedArtwork {
+            // Use cached artwork - set info immediately with artwork
+            info[MPMediaItemPropertyArtwork] = cachedArtwork
+            nowPlayingInfo.nowPlayingInfo = info
+        } else if let artworkURLString = artworkURLString, let artworkURL = URL(string: artworkURLString) {
+            // Need to load artwork - set info with cached artwork if available (even if wrong URL),
+            // then update once new artwork loads
+            if let cachedArtwork = cachedArtwork {
+                info[MPMediaItemPropertyArtwork] = cachedArtwork
+            }
+            nowPlayingInfo.nowPlayingInfo = info
+            
+            // Load new artwork asynchronously
             Task {
                 if let image = await loadArtwork(from: artworkURL) {
                     let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+                    // Cache the artwork
+                    self.cachedArtwork = artwork
+                    self.cachedArtworkURL = artworkURLString
+                    
+                    // Update info with new artwork
                     var updatedInfo = info
                     updatedInfo[MPMediaItemPropertyArtwork] = artwork
-                    await MainActor.run {
-                        nowPlayingInfo.nowPlayingInfo = updatedInfo
-                    }
+                    self.nowPlayingInfo.nowPlayingInfo = updatedInfo
                 }
             }
+        } else {
+            // No artwork URL - set info without artwork
+            nowPlayingInfo.nowPlayingInfo = info
         }
         
         // #region agent log
@@ -257,11 +281,11 @@ class NowPlayingManager {
             "elapsed": elapsedValue,
             "rate": rateValue,
             "isOtherAudioPlaying": audioSession.isOtherAudioPlaying,
-            "audioSessionCategory": audioSession.category.rawValue
+            "audioSessionCategory": audioSession.category.rawValue,
+            "hasArtwork": info[MPMediaItemPropertyArtwork] != nil,
+            "usingCachedArtwork": cachedArtworkURL == artworkURLString
         ], hypothesisId: "H")
         // #endregion
-        
-        nowPlayingInfo.nowPlayingInfo = info
         
         // #region agent log
         let retrievedInfo = nowPlayingInfo.nowPlayingInfo
@@ -294,6 +318,9 @@ class NowPlayingManager {
     /// Clear Now Playing info
     func clearNowPlaying() {
         nowPlayingInfo.nowPlayingInfo = nil
+        // Clear cached artwork when clearing now playing
+        cachedArtwork = nil
+        cachedArtworkURL = nil
     }
     
     // MARK: - Artwork Loading

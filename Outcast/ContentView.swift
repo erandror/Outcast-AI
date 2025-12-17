@@ -125,6 +125,9 @@ struct ContentView: View {
         .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
             if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
                 PlayerView(episodes: episodes, startIndex: index)
+            } else {
+                // Episode not in current list, show single-episode player
+                PlayerView(episodes: [episode], startIndex: 0)
             }
         }
         .onChange(of: selectedEpisodeForPlayer) { oldValue, newValue in
@@ -371,10 +374,10 @@ struct ContentView: View {
     private var bottomOverlay: some View {
         VStack(spacing: 0) {
             MiniPlayer(onTap: {
-                // Find the current episode in the episodes list and open player
-                if let currentEpisode = playbackManager.currentEpisode,
-                   let episode = episodes.first(where: { $0.episode.uuid == currentEpisode.uuid }) {
-                    selectedEpisodeForPlayer = episode
+                // Create EpisodeWithPodcast directly from playback manager
+                if let episode = playbackManager.currentEpisode,
+                   let podcast = playbackManager.currentPodcast {
+                    selectedEpisodeForPlayer = EpisodeWithPodcast(episode: episode, podcast: podcast)
                 }
             })
             
@@ -509,16 +512,22 @@ struct ContentView: View {
     
     private func refreshFeeds() async {
         isRefreshing = true
-        defer { isRefreshing = false }
         
-        do {
-            let refresher = FeedRefresher.shared
-            _ = try await refresher.refreshAll()
-            await loadEpisodes()
-            lastRefreshDate = Date()
-        } catch {
-            print("Failed to refresh: \(error)")
+        // Start background refresh (fire and forget)
+        Task.detached(priority: .utility) {
+            do {
+                _ = try await FeedRefresher.shared.refreshAll()
+            } catch {
+                print("Background refresh failed: \(error)")
+            }
         }
+        
+        // Brief delay for visual feedback, then dismiss spinner
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        
+        isRefreshing = false
+        lastRefreshDate = Date()
+        await loadEpisodes()
     }
     
     private func monitorImportProgress() async {

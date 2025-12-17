@@ -41,16 +41,25 @@ actor FeedRefresher {
             try PodcastRecord.fetchAll(db)
         }
         
-        // Prioritize Up Next podcasts for faster refresh
-        let upNextPodcasts = podcasts.filter { $0.isUpNext }
-        let otherPodcasts = podcasts.filter { !$0.isUpNext }
-        let orderedPodcasts = upNextPodcasts + otherPodcasts
+        // Score and sort ALL podcasts by priority (all will be refreshed)
+        let sortedPodcasts = await prioritizePodcasts(podcasts)
         
         var totalNewEpisodes = 0
         
-        // Refresh feeds concurrently but with a limit
+        // Refresh feeds in priority order with concurrency limit
         await withTaskGroup(of: Int.self) { group in
-            for podcast in orderedPodcasts {
+            var activeTasks = 0
+            let maxConcurrent = 4
+            
+            for podcast in sortedPodcasts {
+                // Wait if at capacity
+                while activeTasks >= maxConcurrent {
+                    if let result = await group.next() {
+                        totalNewEpisodes += result
+                        activeTasks -= 1
+                    }
+                }
+                
                 group.addTask {
                     do {
                         return try await self.refresh(podcast: podcast)
@@ -59,8 +68,10 @@ actor FeedRefresher {
                         return 0
                     }
                 }
+                activeTasks += 1
             }
             
+            // Collect remaining results
             for await newCount in group {
                 totalNewEpisodes += newCount
             }
@@ -70,6 +81,63 @@ actor FeedRefresher {
         UserDefaults.lastFeedRefresh = Date()
         
         return totalNewEpisodes
+    }
+    
+    /// Prioritize podcasts for refresh based on multiple factors
+    /// - Parameter podcasts: All podcasts to prioritize
+    /// - Returns: Podcasts sorted by priority (highest first)
+    private func prioritizePodcasts(_ podcasts: [PodcastRecord]) async -> [PodcastRecord] {
+        // Fetch podcasts with recent play activity (last 7 days)
+        let recentlyPlayedPodcastIds: Set<Int64> = (try? await database.readAsync { db in
+            let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+            let ids = try Int64.fetchAll(db, sql: """
+                SELECT DISTINCT podcastId FROM episode 
+                WHERE lastPlayedAt > ?
+                """, arguments: [cutoff])
+            return Set(ids)
+        }) ?? []
+        
+        let sixHoursAgo = Date().addingTimeInterval(-6 * 60 * 60)
+        
+        return podcasts.sorted { p1, p2 in
+            calculatePriority(p1, recentlyPlayedPodcastIds, sixHoursAgo) > 
+            calculatePriority(p2, recentlyPlayedPodcastIds, sixHoursAgo)
+        }
+    }
+    
+    /// Calculate priority score for a podcast
+    /// - Parameters:
+    ///   - podcast: The podcast to score
+    ///   - recentlyPlayedIds: Set of podcast IDs that have been played recently
+    ///   - staleThreshold: Date threshold for considering a feed stale (6 hours ago)
+    /// - Returns: Priority score (higher = refresh first)
+    private func calculatePriority(
+        _ podcast: PodcastRecord,
+        _ recentlyPlayedIds: Set<Int64>,
+        _ staleThreshold: Date
+    ) -> Int {
+        var score = 0
+        
+        // Never refreshed - highest priority
+        if podcast.lastRefreshDate == nil {
+            score += 100
+        }
+        // Not refreshed in 6+ hours
+        else if let lastRefresh = podcast.lastRefreshDate, lastRefresh < staleThreshold {
+            score += 70
+        }
+        
+        // Up Next podcasts
+        if podcast.isUpNext {
+            score += 50
+        }
+        
+        // Recently played (last 7 days)
+        if let id = podcast.id, recentlyPlayedIds.contains(id) {
+            score += 30
+        }
+        
+        return score
     }
     
     /// Refresh a single podcast feed

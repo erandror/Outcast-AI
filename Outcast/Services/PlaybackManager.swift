@@ -202,8 +202,13 @@ class PlaybackManager: ObservableObject {
     func pause() {
         player.pause()
         
-        // Update Now Playing info
-        updateNowPlayingInfo()
+        // Update lock screen state (use updatePlaybackState to preserve artwork)
+        NowPlayingManager.shared.updatePlaybackState(
+            currentTime: currentTime,
+            duration: duration,
+            playbackRate: playbackRate,
+            isPlaying: isPlaying
+        )
         
         Task {
             try? await savePlaybackPosition()
@@ -225,8 +230,13 @@ class PlaybackManager: ObservableObject {
     func seek(to time: TimeInterval) async {
         player.seek(to: time)
         
-        // Update Now Playing info
-        updateNowPlayingInfo()
+        // Update lock screen time immediately (use updatePlaybackState to preserve artwork)
+        NowPlayingManager.shared.updatePlaybackState(
+            currentTime: currentTime,
+            duration: duration,
+            playbackRate: playbackRate,
+            isPlaying: isPlaying
+        )
         
         try? await savePlaybackPosition()
     }
@@ -234,12 +244,26 @@ class PlaybackManager: ObservableObject {
     /// Skip forward
     func skipForward(by seconds: TimeInterval = 15) async {
         player.skipForward(by: seconds)
+        // Update lock screen time immediately (use updatePlaybackState to preserve artwork)
+        NowPlayingManager.shared.updatePlaybackState(
+            currentTime: currentTime,
+            duration: duration,
+            playbackRate: playbackRate,
+            isPlaying: isPlaying
+        )
         try? await savePlaybackPosition()
     }
     
     /// Skip backward
     func skipBackward(by seconds: TimeInterval = 15) async {
         player.skipBackward(by: seconds)
+        // Update lock screen time immediately (use updatePlaybackState to preserve artwork)
+        NowPlayingManager.shared.updatePlaybackState(
+            currentTime: currentTime,
+            duration: duration,
+            playbackRate: playbackRate,
+            isPlaying: isPlaying
+        )
         try? await savePlaybackPosition()
     }
     
@@ -254,8 +278,16 @@ class PlaybackManager: ObservableObject {
         stopUpdateTimer()
         updateTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                try? await self?.savePlaybackPosition()
-                self?.updateNowPlayingInfo()
+                guard let self = self else { return }
+                try? await self.savePlaybackPosition()
+                // Use updatePlaybackState for periodic updates - this preserves the cached artwork
+                // and only updates time/duration/rate without causing artwork to blink
+                NowPlayingManager.shared.updatePlaybackState(
+                    currentTime: self.currentTime,
+                    duration: self.duration,
+                    playbackRate: self.playbackRate,
+                    isPlaying: self.isPlaying
+                )
             }
         }
     }
