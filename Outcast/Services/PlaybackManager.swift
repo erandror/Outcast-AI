@@ -11,30 +11,6 @@ import Combine
 import AVFoundation
 import GRDB
 
-// #region agent log
-private func debugLog(location: String, message: String, data: [String: Any], hypothesisId: String) {
-    let logPath = "/Users/erandrorsmacbookpro/Outcast-AI/Outcast/.cursor/debug.log"
-    let logEntry: [String: Any] = [
-        "timestamp": Date().timeIntervalSince1970 * 1000,
-        "location": location,
-        "message": message,
-        "data": data,
-        "sessionId": "debug-session",
-        "hypothesisId": hypothesisId
-    ]
-    if let jsonData = try? JSONSerialization.data(withJSONObject: logEntry),
-       let jsonString = String(data: jsonData, encoding: .utf8) {
-        if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-            fileHandle.seekToEndOfFile()
-            fileHandle.write((jsonString + "\n").data(using: .utf8)!)
-            fileHandle.closeFile()
-        } else {
-            try? (jsonString + "\n").write(toFile: logPath, atomically: true, encoding: .utf8)
-        }
-    }
-}
-// #endregion
-
 /// Coordinates playback, database updates, and UI state
 @MainActor
 class PlaybackManager: ObservableObject {
@@ -301,30 +277,10 @@ class PlaybackManager: ObservableObject {
     
     /// Update Now Playing info on lock screen and control center
     private func updateNowPlayingInfo() {
-        // #region agent log
-        debugLog(location: "PlaybackManager.swift:223", message: "updateNowPlayingInfo called", data: [
-            "hasEpisode": currentEpisode != nil,
-            "hasPodcast": currentPodcast != nil
-        ], hypothesisId: "B")
-        // #endregion
-        
         guard let episode = currentEpisode, let podcast = currentPodcast else {
-            // #region agent log
-            debugLog(location: "PlaybackManager.swift:232", message: "Clearing now playing - no episode/podcast", data: [:], hypothesisId: "B")
-            // #endregion
             NowPlayingManager.shared.clearNowPlaying()
             return
         }
-        
-        // #region agent log
-        debugLog(location: "PlaybackManager.swift:239", message: "Calling NowPlayingManager.updateNowPlaying", data: [
-            "episodeTitle": episode.title,
-            "podcastTitle": podcast.title,
-            "currentTime": currentTime,
-            "duration": duration,
-            "isPlaying": isPlaying
-        ], hypothesisId: "B")
-        // #endregion
         
         NowPlayingManager.shared.updateNowPlaying(
             episode: episode,
@@ -344,10 +300,13 @@ class PlaybackManager: ObservableObject {
         
         let currentPlaybackTime = self.currentTime
         
+        // Fetch the LATEST episode from DB to avoid overwriting fields modified elsewhere (e.g., isSaved)
         try await database.writeAsync { db in
-            var updatedEpisode = episode
-            updatedEpisode.playedUpTo = currentPlaybackTime
-            try updatedEpisode.update(db)
+            guard var latestEpisode = try EpisodeRecord.filter(Column("uuid") == episode.uuid).fetchOne(db) else {
+                return
+            }
+            latestEpisode.playedUpTo = currentPlaybackTime
+            try latestEpisode.update(db)
         }
         
         await refreshCurrentEpisode()
@@ -366,11 +325,14 @@ class PlaybackManager: ObservableObject {
     private func markAsCompleted() async throws {
         guard let episode = currentEpisode else { return }
         
+        // Fetch the LATEST episode from DB to avoid overwriting fields modified elsewhere (e.g., isSaved)
         try await database.writeAsync { db in
-            var updatedEpisode = episode
-            updatedEpisode.playingStatus = .completed
-            updatedEpisode.playedUpTo = updatedEpisode.duration ?? 0
-            try updatedEpisode.update(db)
+            guard var latestEpisode = try EpisodeRecord.filter(Column("uuid") == episode.uuid).fetchOne(db) else {
+                return
+            }
+            latestEpisode.playingStatus = .completed
+            latestEpisode.playedUpTo = latestEpisode.duration ?? 0
+            try latestEpisode.update(db)
         }
         
         await refreshCurrentEpisode()
@@ -381,10 +343,13 @@ class PlaybackManager: ObservableObject {
         guard let episode = currentEpisode,
               episode.duration == nil || episode.duration == 0 else { return }
         
+        // Fetch the LATEST episode from DB to avoid overwriting fields modified elsewhere (e.g., isSaved)
         try? await database.writeAsync { db in
-            var updated = episode
-            updated.duration = detectedDuration
-            try updated.update(db)
+            guard var latestEpisode = try EpisodeRecord.filter(Column("uuid") == episode.uuid).fetchOne(db) else {
+                return
+            }
+            latestEpisode.duration = detectedDuration
+            try latestEpisode.update(db)
         }
         
         await refreshCurrentEpisode()

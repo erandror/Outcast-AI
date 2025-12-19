@@ -466,6 +466,7 @@ struct ContentView: View {
             let loaded = try await AppDatabase.shared.readAsync { db in
                 try EpisodeWithPodcast.fetchFiltered(filter: filter, limit: pageSize, offset: 0, db: db)
             }
+            
             await MainActor.run {
                 episodes = loaded
                 currentOffset = loaded.count
