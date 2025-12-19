@@ -11,6 +11,7 @@ import GRDB
 struct EpisodeView: View {
     let episodes: [EpisodeWithPodcast]
     let startIndex: Int
+    let onEpisodeUpdated: (() -> Void)?
     
     @Environment(\.dismiss) private var dismiss
     @State private var showPlayer = false
@@ -61,7 +62,7 @@ struct EpisodeView: View {
             isSaved = episode.episode.isSaved
         }
         .fullScreenCover(isPresented: $showPlayer) {
-            PlayerView(episodes: episodes, startIndex: startIndex)
+            PlayerView(episodes: episodes, startIndex: startIndex, onEpisodeUpdated: onEpisodeUpdated)
         }
         .sheet(isPresented: $showPodcastDetail) {
             NavigationStack {
@@ -390,6 +391,11 @@ struct EpisodeView: View {
                 await MainActor.run {
                     isSaved.toggle()
                 }
+                
+                // Notify parent to reload episodes
+                await MainActor.run {
+                    onEpisodeUpdated?()
+                }
             } catch {
                 print("Failed to toggle saved state: \(error)")
             }
@@ -433,5 +439,5 @@ struct EpisodeView: View {
         playingStatus: .inProgress
     )
     
-    EpisodeView(episodes: [EpisodeWithPodcast(episode: episode, podcast: podcast)], startIndex: 0)
+    EpisodeView(episodes: [EpisodeWithPodcast(episode: episode, podcast: podcast)], startIndex: 0, onEpisodeUpdated: nil)
 }

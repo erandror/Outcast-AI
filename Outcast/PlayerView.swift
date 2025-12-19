@@ -6,10 +6,12 @@
 //
 
 import SwiftUI
+import GRDB
 
 struct PlayerView: View {
     let episodes: [EpisodeWithPodcast]
     let startIndex: Int
+    let onEpisodeUpdated: (() -> Void)?
     
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var playbackManager = PlaybackManager.shared
@@ -19,9 +21,10 @@ struct PlayerView: View {
     @State private var isAnimating = false
     @State private var isCurrentEpisodeSaved: Bool = false
     
-    init(episodes: [EpisodeWithPodcast], startIndex: Int) {
+    init(episodes: [EpisodeWithPodcast], startIndex: Int, onEpisodeUpdated: (() -> Void)? = nil) {
         self.episodes = episodes
         self.startIndex = startIndex
+        self.onEpisodeUpdated = onEpisodeUpdated
         _currentIndex = State(initialValue: startIndex)
     }
     
@@ -300,10 +303,33 @@ struct PlayerView: View {
     private func loadCurrentEpisode() async {
         do {
             try await playbackManager.load(episode: currentEpisode.episode, autoPlay: true)
-            // Load saved state
-            isCurrentEpisodeSaved = currentEpisode.episode.isSaved
         } catch {
             print("Failed to load episode: \(error)")
+        }
+        
+        // Always load saved state from database (the episodes array may be stale)
+        await loadSavedState()
+    }
+    
+    private func loadSavedState() async {
+        guard let episodeId = currentEpisode.episode.id else {
+            isCurrentEpisodeSaved = currentEpisode.episode.isSaved
+            return
+        }
+        
+        do {
+            let savedState = try await AppDatabase.shared.readAsync { db in
+                try EpisodeRecord
+                    .filter(Column("id") == episodeId)
+                    .fetchOne(db)?
+                    .isSaved ?? false
+            }
+            await MainActor.run {
+                isCurrentEpisodeSaved = savedState
+            }
+        } catch {
+            print("Failed to load saved state: \(error)")
+            isCurrentEpisodeSaved = currentEpisode.episode.isSaved
         }
     }
     
@@ -318,6 +344,11 @@ struct PlayerView: View {
             // Update local state
             await MainActor.run {
                 isCurrentEpisodeSaved.toggle()
+            }
+            
+            // Notify parent to reload episodes
+            await MainActor.run {
+                onEpisodeUpdated?()
             }
         } catch {
             print("Failed to toggle saved state: \(error)")
@@ -393,5 +424,5 @@ struct PlayerView: View {
         EpisodeWithPodcast(episode: episode2, podcast: podcast)
     ]
     
-    PlayerView(episodes: episodes, startIndex: 0)
+    PlayerView(episodes: episodes, startIndex: 0, onEpisodeUpdated: nil)
 }

@@ -124,12 +124,20 @@ struct ContentView: View {
         }
         .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
             if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
-                PlayerView(episodes: episodes, startIndex: index)
+                PlayerView(episodes: episodes, startIndex: index) {
+                    Task {
+                        await loadEpisodes()
+                    }
+                }
             }
         }
         .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
             if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
-                EpisodeView(episodes: episodes, startIndex: index)
+                EpisodeView(episodes: episodes, startIndex: index) {
+                    Task {
+                        await loadEpisodes()
+                    }
+                }
             }
         }
         .sheet(isPresented: $showImport) {
@@ -683,7 +691,10 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         "playedUpTo", "playingStatus", "isDownloaded", "downloadedPath",
         "downloadStatus", "downloadProgress", "localFilePath", "downloadedFileSize",
         "downloadTaskIdentifier", "downloadError", "autoDownloadStatus",
-        "needsTagging"  // Added in v6 migration - was missing!
+        "needsTagging",  // Added in v6 migration
+        "lastPlayedAt",  // Added in v7 migration
+        "isSaved",  // Added in v10 migration
+        "savedAt"  // Added in v10 migration
     ]
     
     // Helper function to parse a flattened row into EpisodeWithPodcast
