@@ -30,9 +30,11 @@ actor FeedRefresher {
     }
     
     /// Refresh all podcast feeds
+    /// - Parameter maxPodcasts: Maximum number of podcasts to refresh (nil = unlimited, for background tasks)
+    /// - Parameter concurrency: Maximum concurrent refreshes (defaults to 4 for background, 2 for foreground)
     /// - Returns: Number of new episodes found
     @discardableResult
-    func refreshAll() async throws -> Int {
+    func refreshAll(maxPodcasts: Int? = nil, concurrency: Int? = nil) async throws -> Int {
         guard !isRefreshing else { return 0 }
         isRefreshing = true
         defer { isRefreshing = false }
@@ -41,17 +43,44 @@ actor FeedRefresher {
             try PodcastRecord.fetchAll(db)
         }
         
-        // Score and sort ALL podcasts by priority (all will be refreshed)
-        let sortedPodcasts = await prioritizePodcasts(podcasts)
+        // Filter out podcasts refreshed within the last hour (unless this is a background refresh)
+        let oneHourAgo = Date().addingTimeInterval(-60 * 60)
+        let candidatePodcasts: [PodcastRecord]
+        
+        if maxPodcasts != nil {
+            // Foreground refresh - filter out recently refreshed podcasts
+            candidatePodcasts = podcasts.filter { podcast in
+                guard let lastRefresh = podcast.lastRefreshDate else { return true }
+                return lastRefresh < oneHourAgo
+            }
+        } else {
+            // Background refresh - include all podcasts
+            candidatePodcasts = podcasts
+        }
+        
+        // Score and sort podcasts by priority
+        let sortedPodcasts = await prioritizePodcasts(candidatePodcasts)
+        
+        // Limit to maxPodcasts if specified
+        let podcastsToRefresh: [PodcastRecord]
+        if let limit = maxPodcasts {
+            podcastsToRefresh = Array(sortedPodcasts.prefix(limit))
+            print("🔄 Refreshing top \(podcastsToRefresh.count) priority podcasts (of \(podcasts.count) total)")
+        } else {
+            podcastsToRefresh = sortedPodcasts
+            print("🔄 Refreshing all \(podcastsToRefresh.count) podcasts")
+        }
         
         var totalNewEpisodes = 0
+        
+        // Determine concurrency based on context
+        let maxConcurrent = concurrency ?? (maxPodcasts == nil ? 4 : 2)
         
         // Refresh feeds in priority order with concurrency limit
         await withTaskGroup(of: Int.self) { group in
             var activeTasks = 0
-            let maxConcurrent = 4
             
-            for podcast in sortedPodcasts {
+            for podcast in podcastsToRefresh {
                 // Wait if at capacity
                 while activeTasks >= maxConcurrent {
                     if let result = await group.next() {
@@ -170,10 +199,10 @@ actor FeedRefresher {
         
         // Handle 304 Not Modified
         if httpResponse.statusCode == 304 {
-            // Update last refresh date only
+            // Update last refresh date - extend it by 1 hour to deprioritize unchanged feeds
             try await database.writeAsync { db in
                 var updatedPodcast = podcast
-                updatedPodcast.lastRefreshDate = Date()
+                updatedPodcast.lastRefreshDate = Date().addingTimeInterval(60 * 60) // +1 hour
                 try updatedPodcast.update(db)
             }
             return 0
@@ -186,9 +215,10 @@ actor FeedRefresher {
         // Check if content has changed
         let contentHash = data.md5Hash
         if podcast.contentHash == contentHash {
+            // Content unchanged - extend refresh date by 1 hour to deprioritize
             try await database.writeAsync { db in
                 var updatedPodcast = podcast
-                updatedPodcast.lastRefreshDate = Date()
+                updatedPodcast.lastRefreshDate = Date().addingTimeInterval(60 * 60) // +1 hour
                 try updatedPodcast.update(db)
             }
             return 0

@@ -57,20 +57,22 @@ struct OutcastApp: App {
                     Task {
                         do {
                             let refresher = FeedRefresher.shared
-                            _ = try await refresher.refreshAll()
-                            print("✓ Auto-refreshed feeds on foreground (stale data)")
+                            // Foreground refresh: only top 30 priority podcasts with 2 concurrent requests
+                            _ = try await refresher.refreshAll(maxPodcasts: 30, concurrency: 2)
+                            print("✓ Auto-refreshed top priority feeds on foreground (stale data)")
                         } catch {
                             print("Auto-refresh failed: \(error)")
                         }
                     }
                 }
             } else {
-                // First launch or no refresh yet - refresh immediately
+                // First launch or no refresh yet - refresh top priority podcasts
                 Task {
                     do {
                         let refresher = FeedRefresher.shared
-                        _ = try await refresher.refreshAll()
-                        print("✓ Auto-refreshed feeds on first launch")
+                        // Foreground refresh: only top 30 priority podcasts with 2 concurrent requests
+                        _ = try await refresher.refreshAll(maxPodcasts: 30, concurrency: 2)
+                        print("✓ Auto-refreshed top priority feeds on first launch")
                     } catch {
                         print("Auto-refresh failed: \(error)")
                     }
@@ -110,6 +112,7 @@ struct OutcastApp: App {
         let refreshTask = Task {
             do {
                 let refresher = FeedRefresher.shared
+                // Background refresh: all podcasts with 4 concurrent requests (no limits)
                 _ = try await refresher.refreshAll()
                 task.setTaskCompleted(success: true)
             } catch {

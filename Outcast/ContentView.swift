@@ -125,26 +125,11 @@ struct ContentView: View {
         .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
             if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
                 PlayerView(episodes: episodes, startIndex: index)
-            } else {
-                // Episode not in current list, show single-episode player
-                PlayerView(episodes: [episode], startIndex: 0)
-            }
-        }
-        .onChange(of: selectedEpisodeForPlayer) { oldValue, newValue in
-            if oldValue != nil && newValue == nil {
-                // Player was dismissed, reload to get updated saved state
-                Task { await loadEpisodes() }
             }
         }
         .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
             if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
                 EpisodeView(episodes: episodes, startIndex: index)
-            }
-        }
-        .onChange(of: selectedEpisodeForDetail) { oldValue, newValue in
-            if oldValue != nil && newValue == nil {
-                // Episode detail was dismissed, reload to get updated saved state
-                Task { await loadEpisodes() }
             }
         }
         .sheet(isPresented: $showImport) {
@@ -374,10 +359,10 @@ struct ContentView: View {
     private var bottomOverlay: some View {
         VStack(spacing: 0) {
             MiniPlayer(onTap: {
-                // Create EpisodeWithPodcast directly from playback manager
-                if let episode = playbackManager.currentEpisode,
-                   let podcast = playbackManager.currentPodcast {
-                    selectedEpisodeForPlayer = EpisodeWithPodcast(episode: episode, podcast: podcast)
+                // Find the current episode in the episodes list and open player
+                if let currentEpisode = playbackManager.currentEpisode,
+                   let episode = episodes.first(where: { $0.episode.uuid == currentEpisode.uuid }) {
+                    selectedEpisodeForPlayer = episode
                 }
             })
             
@@ -512,22 +497,16 @@ struct ContentView: View {
     
     private func refreshFeeds() async {
         isRefreshing = true
+        defer { isRefreshing = false }
         
-        // Start background refresh (fire and forget)
-        Task.detached(priority: .utility) {
-            do {
-                _ = try await FeedRefresher.shared.refreshAll()
-            } catch {
-                print("Background refresh failed: \(error)")
-            }
+        do {
+            let refresher = FeedRefresher.shared
+            _ = try await refresher.refreshAll()
+            await loadEpisodes()
+            lastRefreshDate = Date()
+        } catch {
+            print("Failed to refresh: \(error)")
         }
-        
-        // Brief delay for visual feedback, then dismiss spinner
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-        
-        isRefreshing = false
-        lastRefreshDate = Date()
-        await loadEpisodes()
     }
     
     private func monitorImportProgress() async {
@@ -572,15 +551,11 @@ struct ContentView: View {
 
 // MARK: - Episode with Podcast Info
 
-struct EpisodeWithPodcast: Identifiable, Sendable, Equatable {
+struct EpisodeWithPodcast: Identifiable, Sendable {
     let episode: EpisodeRecord
     let podcast: PodcastRecord
     
     var id: String { episode.uuid }
-    
-    static func == (lhs: EpisodeWithPodcast, rhs: EpisodeWithPodcast) -> Bool {
-        lhs.episode.uuid == rhs.episode.uuid && lhs.podcast.uuid == rhs.podcast.uuid
-    }
     
     static func fetchLatest(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         let request = EpisodeRecord
@@ -705,11 +680,10 @@ struct EpisodeWithPodcast: Identifiable, Sendable, Equatable {
         "audioMimeType", "fileSize", "duration", "publishedDate", "imageURL",
         "episodeNumber", "seasonNumber", "episodeType", "link", "explicit",
         "subtitle", "author", "contentHTML", "chaptersURL", "transcripts",
-        "playedUpTo", "playingStatus", "lastPlayedAt", "isDownloaded", "downloadedPath",
+        "playedUpTo", "playingStatus", "isDownloaded", "downloadedPath",
         "downloadStatus", "downloadProgress", "localFilePath", "downloadedFileSize",
         "downloadTaskIdentifier", "downloadError", "autoDownloadStatus",
-        "needsTagging",  // Added in v6 migration
-        "isSaved", "savedAt"  // Added in v10 migration
+        "needsTagging"  // Added in v6 migration - was missing!
     ]
     
     // Helper function to parse a flattened row into EpisodeWithPodcast

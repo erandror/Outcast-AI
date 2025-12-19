@@ -56,24 +56,9 @@ struct EpisodeView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .task {
+        .onAppear {
             calculateProgress()
-            // Fetch fresh saved state from database
-            if let episodeId = episode.episode.id {
-                do {
-                    let freshIsSaved = try await AppDatabase.shared.readAsync { db in
-                        try EpisodeRecord.fetchOne(db, key: episodeId)?.isSaved ?? false
-                    }
-                    await MainActor.run {
-                        isSaved = freshIsSaved
-                    }
-                } catch {
-                    print("Failed to fetch saved state: \(error)")
-                    isSaved = episode.episode.isSaved
-                }
-            } else {
-                isSaved = episode.episode.isSaved
-            }
+            isSaved = episode.episode.isSaved
         }
         .fullScreenCover(isPresented: $showPlayer) {
             PlayerView(episodes: episodes, startIndex: startIndex)

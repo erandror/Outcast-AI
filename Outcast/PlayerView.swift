@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import GRDB
 
 struct PlayerView: View {
     let episodes: [EpisodeWithPodcast]
@@ -301,20 +300,10 @@ struct PlayerView: View {
     private func loadCurrentEpisode() async {
         do {
             try await playbackManager.load(episode: currentEpisode.episode, autoPlay: true)
-            // Fetch fresh saved state from database
-            if let episodeId = currentEpisode.episode.id {
-                let freshIsSaved = try await AppDatabase.shared.readAsync { db in
-                    try EpisodeRecord.fetchOne(db, key: episodeId)?.isSaved ?? false
-                }
-                await MainActor.run {
-                    isCurrentEpisodeSaved = freshIsSaved
-                }
-            } else {
-                isCurrentEpisodeSaved = currentEpisode.episode.isSaved
-            }
+            // Load saved state
+            isCurrentEpisodeSaved = currentEpisode.episode.isSaved
         } catch {
             print("Failed to load episode: \(error)")
-            isCurrentEpisodeSaved = currentEpisode.episode.isSaved
         }
     }
     

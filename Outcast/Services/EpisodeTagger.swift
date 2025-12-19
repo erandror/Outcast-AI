@@ -145,6 +145,20 @@ actor EpisodeTagger {
     func processQueue() async {
         guard !isProcessing else { return }
         
+        // Skip if device is under thermal pressure or low power mode
+        let thermalState = ProcessInfo.processInfo.thermalState
+        let isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        
+        guard thermalState != .critical && thermalState != .serious else {
+            print("[TAGGER] ⏸️ Pausing - device thermal state: \(thermalState)")
+            return
+        }
+        
+        guard !isLowPower else {
+            print("[TAGGER] ⏸️ Pausing - Low Power Mode enabled")
+            return
+        }
+        
         // Check if SystemLanguageModel is available (iOS 26+)
         guard #available(iOS 26.0, macOS 26.0, *) else {
             return
