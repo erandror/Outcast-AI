@@ -259,6 +259,11 @@ struct ContentView: View {
                                     Task {
                                         await toggleUpNext(for: episode.podcast)
                                     }
+                                },
+                                onToggleSave: {
+                                    Task {
+                                        await toggleSaved(for: episode)
+                                    }
                                 }
                             )
                             
@@ -433,6 +438,18 @@ struct ContentView: View {
             await loadEpisodes()
         } catch {
             print("Failed to toggle Up Next: \(error)")
+        }
+    }
+    
+    private func toggleSaved(for episode: EpisodeWithPodcast) async {
+        do {
+            try await AppDatabase.shared.writeAsync { db in
+                var ep = episode.episode
+                try ep.toggleSaved(db: db)
+            }
+            await loadEpisodes()
+        } catch {
+            print("Failed to toggle saved: \(error)")
         }
     }
     

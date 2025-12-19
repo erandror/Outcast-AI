@@ -76,6 +76,9 @@ struct ShowView: View {
                                     },
                                     onToggleUpNext: {
                                         toggleUpNext()
+                                    },
+                                    onToggleSave: {
+                                        toggleSaved(for: episode)
                                     }
                                 )
                                 
@@ -163,6 +166,20 @@ struct ShowView: View {
                 print("Failed to toggle Up Next: \(error)")
                 // Revert local state on error
                 podcast.isUpNext.toggle()
+            }
+        }
+    }
+    
+    private func toggleSaved(for episode: EpisodeWithPodcast) {
+        Task {
+            do {
+                try await AppDatabase.shared.writeAsync { db in
+                    var ep = episode.episode
+                    try ep.toggleSaved(db: db)
+                }
+                await loadEpisodes()
+            } catch {
+                print("Failed to toggle saved: \(error)")
             }
         }
     }

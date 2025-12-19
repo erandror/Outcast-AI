@@ -38,6 +38,16 @@ struct HistoryView: View {
                                 },
                                 onTapEpisode: {
                                     onTapEpisode(episode)
+                                },
+                                onToggleUpNext: {
+                                    Task {
+                                        await toggleUpNext(for: episode)
+                                    }
+                                },
+                                onToggleSave: {
+                                    Task {
+                                        await toggleSaved(for: episode)
+                                    }
                                 }
                             )
                             
@@ -94,6 +104,31 @@ struct HistoryView: View {
             print("Failed to load history: \(error)")
         }
     }
+    
+    private func toggleUpNext(for episode: EpisodeWithPodcast) async {
+        do {
+            try await AppDatabase.shared.writeAsync { db in
+                var podcast = episode.podcast
+                podcast.isUpNext.toggle()
+                try podcast.update(db)
+            }
+            await loadHistory()
+        } catch {
+            print("Failed to toggle up next: \(error)")
+        }
+    }
+    
+    private func toggleSaved(for episode: EpisodeWithPodcast) async {
+        do {
+            try await AppDatabase.shared.writeAsync { db in
+                var ep = episode.episode
+                try ep.toggleSaved(db: db)
+            }
+            await loadHistory()
+        } catch {
+            print("Failed to toggle saved: \(error)")
+        }
+    }
 }
 
 // MARK: - History Episode Row
@@ -102,6 +137,8 @@ struct HistoryEpisodeRow: View {
     let episode: EpisodeWithPodcast
     let onPlay: () -> Void
     let onTapEpisode: () -> Void
+    let onToggleUpNext: () -> Void
+    let onToggleSave: () -> Void
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -181,6 +218,30 @@ struct HistoryEpisodeRow: View {
                     // Download button
                     DownloadButton(episode: episode.episode)
                         .frame(width: 36, height: 36)
+                    
+                    // Up Next button
+                    Button {
+                        onToggleUpNext()
+                    } label: {
+                        Image(systemName: episode.podcast.isUpNext ? "text.badge.checkmark" : "text.badge.plus")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Save button
+                    Button {
+                        onToggleSave()
+                    } label: {
+                        Image(systemName: episode.episode.isSaved ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     
                     Spacer()
                 }

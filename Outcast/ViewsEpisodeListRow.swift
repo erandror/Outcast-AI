@@ -13,6 +13,7 @@ struct EpisodeListRow: View {
     let onPlay: () -> Void
     let onTapEpisode: () -> Void
     let onToggleUpNext: () -> Void
+    let onToggleSave: () -> Void
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -94,6 +95,18 @@ struct EpisodeListRow: View {
                     }
                     .buttonStyle(.plain)
                     
+                    // Save button
+                    Button {
+                        onToggleSave()
+                    } label: {
+                        Image(systemName: episode.episode.isSaved ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    
                     Spacer()
                 }
                 .padding(.top, 4)
@@ -161,7 +174,8 @@ struct EpisodeListRow: View {
             episode: EpisodeWithPodcast(episode: episode, podcast: podcast),
             onPlay: {},
             onTapEpisode: {},
-            onToggleUpNext: {}
+            onToggleUpNext: {},
+            onToggleSave: {}
         )
         .background(Color.black)
         
@@ -197,7 +211,8 @@ struct EpisodeListRow: View {
             episode: EpisodeWithPodcast(episode: episode, podcast: podcast),
             onPlay: {},
             onTapEpisode: {},
-            onToggleUpNext: {}
+            onToggleUpNext: {},
+            onToggleSave: {}
         )
         .background(Color.black)
         
@@ -248,7 +263,8 @@ struct EpisodeListRow: View {
                     episode: EpisodeWithPodcast(episode: episode, podcast: podcast),
                     onPlay: {},
                     onTapEpisode: {},
-                    onToggleUpNext: {}
+                    onToggleUpNext: {},
+                    onToggleSave: {}
                 )
                 
                 Rectangle()
