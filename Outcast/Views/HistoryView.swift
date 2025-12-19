@@ -211,46 +211,6 @@ struct HistoryEpisodeRow: View {
 // MARK: - Previews
 
 #Preview {
-    let podcast = PodcastRecord(
-        id: 1,
-        feedURL: "https://example.com/feed.xml",
-        title: "Tech News Daily",
-        author: "Tech Network",
-        podcastDescription: "Your daily tech news",
-        homePageURL: "https://example.com",
-        artworkColor: "#FF6B35"
-    )
-    
-    let inProgressEpisode = EpisodeRecord(
-        id: 1,
-        uuid: "ep-001",
-        podcastId: 1,
-        guid: "guid-001",
-        title: "Episode 1: Getting Started",
-        episodeDescription: "The first episode",
-        audioURL: "https://example.com/episode1.mp3",
-        duration: 3600,
-        publishedDate: Date().addingTimeInterval(-86400),
-        playedUpTo: 1800,
-        playingStatus: .inProgress,
-        lastPlayedAt: Date().addingTimeInterval(-3600)
-    )
-    
-    let completedEpisode = EpisodeRecord(
-        id: 2,
-        uuid: "ep-002",
-        podcastId: 1,
-        guid: "guid-002",
-        title: "Episode 2: Advanced Topics",
-        episodeDescription: "The second episode",
-        audioURL: "https://example.com/episode2.mp3",
-        duration: 2400,
-        publishedDate: Date().addingTimeInterval(-172800),
-        playedUpTo: 2400,
-        playingStatus: .completed,
-        lastPlayedAt: Date().addingTimeInterval(-86400)
-    )
-    
     HistoryView(
         onPlayEpisode: { _ in },
         onTapEpisode: { _ in }

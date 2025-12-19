@@ -59,7 +59,7 @@ extension SystemTagRecord: FetchableRecord, MutablePersistableRecord {
 extension SystemTagRecord {
     
     /// Fetch all tags of a specific type, ordered by displayOrder
-    static func fetchByType(_ type: SystemTagType, db: Database) throws -> [SystemTagRecord] {
+    nonisolated static func fetchByType(_ type: SystemTagType, db: Database) throws -> [SystemTagRecord] {
         try SystemTagRecord
             .filter(Column("type") == type.rawValue)
             .order(Column("displayOrder"))
@@ -67,12 +67,12 @@ extension SystemTagRecord {
     }
     
     /// Fetch all mood tags
-    static func fetchMoodTags(db: Database) throws -> [SystemTagRecord] {
+    nonisolated static func fetchMoodTags(db: Database) throws -> [SystemTagRecord] {
         try fetchByType(.mood, db: db)
     }
     
     /// Fetch all topic tags
-    static func fetchTopicTags(db: Database) throws -> [SystemTagRecord] {
+    nonisolated static func fetchTopicTags(db: Database) throws -> [SystemTagRecord] {
         try fetchByType(.topic, db: db)
     }
     

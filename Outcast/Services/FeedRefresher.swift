@@ -107,7 +107,9 @@ actor FeedRefresher {
         }
         
         // Update global last refresh timestamp
-        UserDefaults.lastFeedRefresh = Date()
+        await MainActor.run {
+            UserDefaults.lastFeedRefresh = Date()
+        }
         
         return totalNewEpisodes
     }
