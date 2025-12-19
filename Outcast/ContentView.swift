@@ -19,6 +19,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 
 struct ContentView: View {
     private enum MainTab {
+        case start
         case listen
         case shows
         case history
@@ -36,7 +37,7 @@ struct ContentView: View {
     @State private var selectedFilter: ListenFilter = .standard(.upNext)
     @State private var topicFilters: [SystemTagRecord] = []
     @State private var importProgress: ImportCoordinator.ImportProgress?
-    @State private var selectedTab: MainTab = .listen
+    @State private var selectedTab: MainTab = .start
     @State private var selectedPodcast: PodcastRecord?
     @ObservedObject private var playbackManager = PlaybackManager.shared
     
@@ -190,6 +191,8 @@ struct ContentView: View {
     
     private var headerTitle: String {
         switch selectedTab {
+        case .start:
+            return "Start"
         case .listen:
             return "For You"
         case .shows:
@@ -204,6 +207,8 @@ struct ContentView: View {
     private var tabContent: some View {
         Group {
             switch selectedTab {
+            case .start:
+                startContent
             case .listen:
                 listenContent
             case .shows:
@@ -214,6 +219,17 @@ struct ContentView: View {
                 placeholderView(title: "Profile", message: "Profile settings and preferences coming soon.")
             }
         }
+    }
+    
+    private var startContent: some View {
+        StartView(
+            topicFilters: topicFilters,
+            onSelectFilter: { filter in
+                Task {
+                    await loadAndPlayFilter(filter)
+                }
+            }
+        )
     }
     
     private var listenContent: some View {
@@ -396,6 +412,11 @@ struct ContentView: View {
     private var bottomNavBar: some View {
         HStack(spacing: 24) {
             navButton(
+                icon: "bolt.fill",
+                tab: .start
+            )
+            
+            navButton(
                 icon: "play.circle",
                 tab: .listen
             )
@@ -557,6 +578,32 @@ struct ContentView: View {
             }
             
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        }
+    }
+    
+    private func loadAndPlayFilter(_ filter: ListenFilter) async {
+        do {
+            // Load episodes for the selected filter
+            let filterEpisodes = try await AppDatabase.shared.readAsync { db in
+                try EpisodeWithPodcast.fetchFiltered(filter: filter, limit: 50, offset: 0, db: db)
+            }
+            
+            // Only proceed if there are episodes available
+            guard !filterEpisodes.isEmpty else {
+                print("No episodes available for filter: \(filter.label)")
+                return
+            }
+            
+            await MainActor.run {
+                // Update the selected filter and episodes
+                selectedFilter = filter
+                episodes = filterEpisodes
+                
+                // Open PlayerView with the first episode
+                selectedEpisodeForPlayer = filterEpisodes[0]
+            }
+        } catch {
+            print("Failed to load episodes for filter: \(error)")
         }
     }
     
