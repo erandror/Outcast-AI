@@ -9,23 +9,69 @@ import SwiftUI
 import GRDB
 
 struct PlayerView: View {
-    let episodes: [EpisodeWithPodcast]
     let startIndex: Int
+    let initialFilter: ListenFilter
+    let topicFilters: [SystemTagRecord]
     let onEpisodeUpdated: (() -> Void)?
     
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var playbackManager = PlaybackManager.shared
     @State private var showingPodcastDetail = false
     @State private var currentIndex: Int
+    @State private var episodes: [EpisodeWithPodcast]
+    @State private var selectedFilter: ListenFilter
     @State private var dragOffset: CGFloat = 0
+    @State private var horizontalDragOffset: CGFloat = 0
     @State private var isAnimating = false
     @State private var isCurrentEpisodeSaved: Bool = false
+    @State private var dragAxis: DragAxis? = nil
+    @State private var isLoadingFilter = false
     
-    init(episodes: [EpisodeWithPodcast], startIndex: Int, onEpisodeUpdated: (() -> Void)? = nil) {
-        self.episodes = episodes
+    private enum DragAxis {
+        case horizontal
+        case vertical
+    }
+    
+    init(episodes: [EpisodeWithPodcast], startIndex: Int, initialFilter: ListenFilter, topicFilters: [SystemTagRecord], onEpisodeUpdated: (() -> Void)? = nil) {
         self.startIndex = startIndex
+        self.initialFilter = initialFilter
+        self.topicFilters = topicFilters
         self.onEpisodeUpdated = onEpisodeUpdated
         _currentIndex = State(initialValue: startIndex)
+        _episodes = State(initialValue: episodes)
+        _selectedFilter = State(initialValue: initialFilter)
+    }
+    
+    /// Build the complete filter array: topics (sorted by popularity) + Up Next + mood filters
+    private var allFilters: [ListenFilter] {
+        var filters: [ListenFilter] = []
+        
+        // Add topic filters (reversed so most popular is closest to center)
+        let sortedTopics = topicFilters.reversed()
+        filters.append(contentsOf: sortedTopics.map { .topic($0) })
+        
+        // Add Up Next in the center
+        filters.append(.standard(.upNext))
+        
+        // Add remaining mood/time filters (excluding upNext which is already added)
+        let standardFilters = ForYouFilter.allCases.filter { $0 != .upNext }
+        filters.append(contentsOf: standardFilters.map { .standard($0) })
+        
+        return filters
+    }
+    
+    private var currentFilterIndex: Int? {
+        allFilters.firstIndex(where: { $0.id == selectedFilter.id })
+    }
+    
+    private var hasPreviousFilter: Bool {
+        guard let index = currentFilterIndex else { return false }
+        return index > 0
+    }
+    
+    private var hasNextFilter: Bool {
+        guard let index = currentFilterIndex else { return false }
+        return index < allFilters.count - 1
     }
     
     private var currentEpisode: EpisodeWithPodcast {
@@ -73,6 +119,22 @@ struct PlayerView: View {
                         episodeCard(for: episodes[currentIndex + 1], offset: geometry.size.height + dragOffset)
                     }
                 }
+                .offset(x: horizontalDragOffset)
+                
+                // Filter bar at top
+                VStack {
+                    ForYouFilterBar(
+                        selectedFilter: $selectedFilter,
+                        topicFilters: topicFilters
+                    )
+                    .onChange(of: selectedFilter) { _, newFilter in
+                        Task {
+                            await switchToFilter(newFilter)
+                        }
+                    }
+                    
+                    Spacer()
+                }
                 
                 // Close button overlay
                 VStack {
@@ -89,44 +151,102 @@ struct PlayerView: View {
                     }
                     Spacer()
                 }
+                
+                // Loading indicator overlay
+                if isLoadingFilter {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
+                }
             }
             .gesture(
                 DragGesture()
                     .onChanged { value in
-                        guard !isAnimating else { return }
+                        guard !isAnimating && !isLoadingFilter else { return }
                         
-                        let translation = value.translation.height
+                        let horizontal = value.translation.width
+                        let vertical = value.translation.height
                         
-                        // Allow drag only if there's content in that direction
-                        if translation < 0 && hasNext {
-                            // Dragging up to next episode
-                            dragOffset = translation
-                        } else if translation > 0 && hasPrevious {
-                            // Dragging down to previous episode
-                            dragOffset = translation
-                        } else if (translation < 0 && !hasNext) || (translation > 0 && !hasPrevious) {
-                            // Resistance at boundaries - reduce drag distance
-                            dragOffset = translation * 0.2
+                        // Determine axis lock on first significant movement
+                        if dragAxis == nil {
+                            let threshold: CGFloat = 20
+                            if abs(horizontal) > threshold || abs(vertical) > threshold {
+                                dragAxis = abs(horizontal) > abs(vertical) ? .horizontal : .vertical
+                            }
+                        }
+                        
+                        // Handle based on locked axis
+                        if dragAxis == .horizontal {
+                            // Horizontal swipe for filter switching
+                            if horizontal < 0 && hasNextFilter {
+                                // Swiping left to next filter
+                                horizontalDragOffset = horizontal
+                            } else if horizontal > 0 && hasPreviousFilter {
+                                // Swiping right to previous filter
+                                horizontalDragOffset = horizontal
+                            } else if (horizontal < 0 && !hasNextFilter) || (horizontal > 0 && !hasPreviousFilter) {
+                                // Resistance at boundaries
+                                horizontalDragOffset = horizontal * 0.2
+                            }
+                        } else if dragAxis == .vertical {
+                            // Vertical swipe for episode navigation (existing behavior)
+                            if vertical < 0 && hasNext {
+                                // Dragging up to next episode
+                                dragOffset = vertical
+                            } else if vertical > 0 && hasPrevious {
+                                // Dragging down to previous episode
+                                dragOffset = vertical
+                            } else if (vertical < 0 && !hasNext) || (vertical > 0 && !hasPrevious) {
+                                // Resistance at boundaries
+                                dragOffset = vertical * 0.2
+                            }
                         }
                     }
                     .onEnded { value in
-                        guard !isAnimating else { return }
+                        guard !isAnimating && !isLoadingFilter else { return }
                         
                         let threshold: CGFloat = 100
-                        let translation = value.translation.height
                         
-                        if translation < -threshold && hasNext {
-                            // Swipe up - go to next
-                            goToNext(screenHeight: geometry.size.height)
-                        } else if translation > threshold && hasPrevious {
-                            // Swipe down - go to previous
-                            goToPrevious(screenHeight: geometry.size.height)
-                        } else {
-                            // Snap back to current
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                dragOffset = 0
+                        if dragAxis == .horizontal {
+                            let horizontal = value.translation.width
+                            
+                            if horizontal < -threshold && hasNextFilter {
+                                // Swipe left - go to next filter
+                                Task {
+                                    await goToNextFilter()
+                                }
+                            } else if horizontal > threshold && hasPreviousFilter {
+                                // Swipe right - go to previous filter
+                                Task {
+                                    await goToPreviousFilter()
+                                }
+                            } else {
+                                // Snap back
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    horizontalDragOffset = 0
+                                }
+                            }
+                        } else if dragAxis == .vertical {
+                            let vertical = value.translation.height
+                            
+                            if vertical < -threshold && hasNext {
+                                // Swipe up - go to next episode
+                                goToNext(screenHeight: geometry.size.height)
+                            } else if vertical > threshold && hasPrevious {
+                                // Swipe down - go to previous episode
+                                goToPrevious(screenHeight: geometry.size.height)
+                            } else {
+                                // Snap back to current
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    dragOffset = 0
+                                }
                             }
                         }
+                        
+                        // Reset axis lock
+                        dragAxis = nil
                     }
             )
         }
@@ -187,6 +307,156 @@ struct PlayerView: View {
             Task {
                 await loadCurrentEpisode()
                 await prefetchAdjacentImages()
+            }
+        }
+    }
+    
+    private func goToNextFilter() async {
+        guard let currentIndex = currentFilterIndex, hasNextFilter else {
+            // Snap back if no next filter
+            await MainActor.run {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    horizontalDragOffset = 0
+                }
+            }
+            return
+        }
+        
+        let nextFilter = allFilters[currentIndex + 1]
+        let screenWidth = UIScreen.main.bounds.width
+        
+        await MainActor.run {
+            isAnimating = true
+            
+            // Animate slide left to next filter
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                horizontalDragOffset = -screenWidth
+            }
+        }
+        
+        // Load new filter content after animation completes
+        try? await Task.sleep(nanoseconds: 400_000_000) // 0.4 seconds
+        
+        await switchToFilterWithoutAnimation(nextFilter)
+    }
+    
+    private func goToPreviousFilter() async {
+        guard let currentIndex = currentFilterIndex, hasPreviousFilter else {
+            // Snap back if no previous filter
+            await MainActor.run {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    horizontalDragOffset = 0
+                }
+            }
+            return
+        }
+        
+        let previousFilter = allFilters[currentIndex - 1]
+        let screenWidth = UIScreen.main.bounds.width
+        
+        await MainActor.run {
+            isAnimating = true
+            
+            // Animate slide right to previous filter
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                horizontalDragOffset = screenWidth
+            }
+        }
+        
+        // Load new filter content after animation completes
+        try? await Task.sleep(nanoseconds: 400_000_000) // 0.4 seconds
+        
+        await switchToFilterWithoutAnimation(previousFilter)
+    }
+    
+    private func switchToFilter(_ newFilter: ListenFilter) async {
+        guard newFilter.id != selectedFilter.id else { return }
+        
+        // Determine swipe direction based on filter position
+        guard let currentIdx = currentFilterIndex,
+              let newIdx = allFilters.firstIndex(where: { $0.id == newFilter.id }) else {
+            // If we can't determine direction, just switch instantly
+            await switchToFilterWithoutAnimation(newFilter)
+            return
+        }
+        
+        let screenWidth = UIScreen.main.bounds.width
+        
+        await MainActor.run {
+            isAnimating = true
+            
+            // Animate in the direction of the filter change
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                if newIdx > currentIdx {
+                    // Swiping to next (left)
+                    horizontalDragOffset = -screenWidth
+                } else {
+                    // Swiping to previous (right)
+                    horizontalDragOffset = screenWidth
+                }
+            }
+        }
+        
+        // Load new filter content after animation completes
+        try? await Task.sleep(nanoseconds: 400_000_000) // 0.4 seconds
+        
+        await switchToFilterWithoutAnimation(newFilter)
+    }
+    
+    private func switchToFilterWithoutAnimation(_ newFilter: ListenFilter) async {
+        guard newFilter.id != selectedFilter.id else {
+            // Just reset if it's the same filter
+            await MainActor.run {
+                horizontalDragOffset = 0
+                isAnimating = false
+            }
+            return
+        }
+        
+        do {
+            // Load episodes for the new filter
+            let newEpisodes = try await AppDatabase.shared.readAsync { db in
+                try EpisodeWithPodcast.fetchFiltered(filter: newFilter, limit: 50, offset: 0, db: db)
+            }
+            
+            // Only switch if there are episodes available
+            guard !newEpisodes.isEmpty else {
+                print("No episodes available for filter: \(newFilter.label)")
+                await MainActor.run {
+                    // Snap back horizontal drag
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        horizontalDragOffset = 0
+                    }
+                    isAnimating = false
+                }
+                return
+            }
+            
+            await MainActor.run {
+                // Update filter and episodes
+                selectedFilter = newFilter
+                episodes = newEpisodes
+                currentIndex = 0
+                
+                // Reset drag offsets
+                dragOffset = 0
+                horizontalDragOffset = 0
+                
+                isAnimating = false
+            }
+            
+            // Load the first episode and prefetch images
+            await loadCurrentEpisode()
+            await prefetchAdjacentImages()
+            
+        } catch {
+            print("Failed to load episodes for filter: \(error)")
+            await MainActor.run {
+                // Snap back horizontal drag
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    horizontalDragOffset = 0
+                }
+                isAnimating = false
             }
         }
     }
@@ -424,5 +694,11 @@ struct PlayerView: View {
         EpisodeWithPodcast(episode: episode2, podcast: podcast)
     ]
     
-    PlayerView(episodes: episodes, startIndex: 0, onEpisodeUpdated: nil)
+    PlayerView(
+        episodes: episodes,
+        startIndex: 0,
+        initialFilter: .standard(.upNext),
+        topicFilters: [],
+        onEpisodeUpdated: nil
+    )
 }

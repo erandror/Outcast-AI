@@ -62,7 +62,13 @@ struct EpisodeView: View {
             isSaved = episode.episode.isSaved
         }
         .fullScreenCover(isPresented: $showPlayer) {
-            PlayerView(episodes: episodes, startIndex: startIndex, onEpisodeUpdated: onEpisodeUpdated)
+            PlayerView(
+                episodes: episodes,
+                startIndex: startIndex,
+                initialFilter: .standard(.latest),
+                topicFilters: [],
+                onEpisodeUpdated: onEpisodeUpdated
+            )
         }
         .sheet(isPresented: $showPodcastDetail) {
             NavigationStack {

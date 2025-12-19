@@ -124,11 +124,17 @@ struct ContentView: View {
         }
         .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
             if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
-                PlayerView(episodes: episodes, startIndex: index) {
-                    Task {
-                        await loadEpisodes()
+                PlayerView(
+                    episodes: episodes,
+                    startIndex: index,
+                    initialFilter: selectedFilter,
+                    topicFilters: topicFilters,
+                    onEpisodeUpdated: {
+                        Task {
+                            await loadEpisodes()
+                        }
                     }
-                }
+                )
             }
         }
         .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
