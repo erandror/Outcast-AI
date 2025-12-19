@@ -26,6 +26,8 @@ struct PlayerView: View {
     @State private var isCurrentEpisodeSaved: Bool = false
     @State private var dragAxis: DragAxis? = nil
     @State private var isLoadingFilter = false
+    @State private var previousFilterEpisodes: [EpisodeWithPodcast] = []
+    @State private var nextFilterEpisodes: [EpisodeWithPodcast] = []
     
     private enum DragAxis {
         case horizontal
@@ -106,20 +108,35 @@ struct PlayerView: View {
                 
                 // Episode cards with offsets for swipe animation
                 ZStack {
-                    // Previous episode (above current)
-                    if hasPrevious {
-                        episodeCard(for: episodes[currentIndex - 1], offset: -geometry.size.height + dragOffset)
+                    // Previous filter content (to the left)
+                    if hasPreviousFilter, let firstEpisode = previousFilterEpisodes.first {
+                        episodeCard(for: firstEpisode, offset: 0)
+                            .offset(x: -geometry.size.width + horizontalDragOffset)
                     }
                     
-                    // Current episode
-                    episodeCard(for: currentEpisode, offset: dragOffset)
+                    // Current filter content (vertical stack for episode navigation)
+                    ZStack {
+                        // Previous episode (above current)
+                        if hasPrevious {
+                            episodeCard(for: episodes[currentIndex - 1], offset: -geometry.size.height + dragOffset)
+                        }
+                        
+                        // Current episode
+                        episodeCard(for: currentEpisode, offset: dragOffset)
+                        
+                        // Next episode (below current)
+                        if hasNext {
+                            episodeCard(for: episodes[currentIndex + 1], offset: geometry.size.height + dragOffset)
+                        }
+                    }
+                    .offset(x: horizontalDragOffset)
                     
-                    // Next episode (below current)
-                    if hasNext {
-                        episodeCard(for: episodes[currentIndex + 1], offset: geometry.size.height + dragOffset)
+                    // Next filter content (to the right)
+                    if hasNextFilter, let firstEpisode = nextFilterEpisodes.first {
+                        episodeCard(for: firstEpisode, offset: 0)
+                            .offset(x: geometry.size.width + horizontalDragOffset)
                     }
                 }
-                .offset(x: horizontalDragOffset)
                 
                 // Filter bar at top
                 VStack {
@@ -255,6 +272,8 @@ struct PlayerView: View {
             await loadCurrentEpisode()
             // Prefetch adjacent episode images
             await prefetchAdjacentImages()
+            // Prefetch adjacent filter episodes
+            await prefetchAdjacentFilters()
         }
         .sheet(isPresented: $showingPodcastDetail) {
             NavigationStack {
@@ -448,6 +467,7 @@ struct PlayerView: View {
             // Load the first episode and prefetch images
             await loadCurrentEpisode()
             await prefetchAdjacentImages()
+            await prefetchAdjacentFilters()
             
         } catch {
             print("Failed to load episodes for filter: \(error)")
@@ -650,6 +670,75 @@ struct PlayerView: View {
         }
         
         await ArtworkCache.shared.prefetchBatch(urls: urlsToIdentifiers)
+    }
+    
+    private func prefetchAdjacentFilters() async {
+        guard let currentIdx = currentFilterIndex else { return }
+        
+        var artworkUrlsToIdentifiers: [(url: String, identifier: String)] = []
+        
+        // Prefetch previous filter's first episode
+        if currentIdx > 0 {
+            let prevFilter = allFilters[currentIdx - 1]
+            do {
+                let prevEpisodes = try await AppDatabase.shared.readAsync { db in
+                    try EpisodeWithPodcast.fetchFiltered(filter: prevFilter, limit: 1, offset: 0, db: db)
+                }
+                
+                await MainActor.run {
+                    previousFilterEpisodes = prevEpisodes
+                }
+                
+                // Prefetch artwork for previous filter's first episode
+                if let firstEpisode = prevEpisodes.first,
+                   let artworkURL = firstEpisode.episode.imageURL ?? firstEpisode.podcast.artworkURL {
+                    artworkUrlsToIdentifiers.append((artworkURL, firstEpisode.episode.uuid))
+                }
+            } catch {
+                print("Failed to prefetch previous filter episodes: \(error)")
+                await MainActor.run {
+                    previousFilterEpisodes = []
+                }
+            }
+        } else {
+            await MainActor.run {
+                previousFilterEpisodes = []
+            }
+        }
+        
+        // Prefetch next filter's first episode
+        if currentIdx < allFilters.count - 1 {
+            let nextFilter = allFilters[currentIdx + 1]
+            do {
+                let nextEpisodes = try await AppDatabase.shared.readAsync { db in
+                    try EpisodeWithPodcast.fetchFiltered(filter: nextFilter, limit: 1, offset: 0, db: db)
+                }
+                
+                await MainActor.run {
+                    nextFilterEpisodes = nextEpisodes
+                }
+                
+                // Prefetch artwork for next filter's first episode
+                if let firstEpisode = nextEpisodes.first,
+                   let artworkURL = firstEpisode.episode.imageURL ?? firstEpisode.podcast.artworkURL {
+                    artworkUrlsToIdentifiers.append((artworkURL, firstEpisode.episode.uuid))
+                }
+            } catch {
+                print("Failed to prefetch next filter episodes: \(error)")
+                await MainActor.run {
+                    nextFilterEpisodes = []
+                }
+            }
+        } else {
+            await MainActor.run {
+                nextFilterEpisodes = []
+            }
+        }
+        
+        // Prefetch all collected artwork URLs
+        if !artworkUrlsToIdentifiers.isEmpty {
+            await ArtworkCache.shared.prefetchBatch(urls: artworkUrlsToIdentifiers)
+        }
     }
     
     private func formatTime(_ time: TimeInterval) -> String {
