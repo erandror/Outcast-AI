@@ -301,7 +301,7 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
             // Podcast audio file
             if isParsingItem {
                 if let url = attributeDict["url"], !url.isEmpty {
-                    itemAudioURL = url
+                    itemAudioURL = url.upgradingToHTTPS()
                     itemAudioMimeType = attributeDict["type"]
                     if let length = attributeDict["length"], let size = Int64(length) {
                         itemFileSize = size
@@ -311,10 +311,11 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
             
         case "itunes:image":
             if let href = attributeDict["href"], !href.isEmpty {
+                let secureHref = href.upgradingToHTTPS()
                 if isParsingItem {
-                    itemImageURL = href
+                    itemImageURL = secureHref
                 } else {
-                    feedArtworkURL = href
+                    feedArtworkURL = secureHref
                 }
             }
             
@@ -324,7 +325,7 @@ private final class XMLParserDelegateHandler: NSObject, XMLParserDelegate, @unch
                 if let url = attributeDict["url"],
                    let type = attributeDict["type"],
                    type.hasPrefix("audio/") {
-                    itemAudioURL = url
+                    itemAudioURL = url.upgradingToHTTPS()
                     itemAudioMimeType = type
                 }
             }
@@ -644,5 +645,11 @@ private extension String {
         
         // Fallback: simple regex-based stripping
         return self.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+    }
+    
+    /// Upgrades HTTP URLs to HTTPS for ATS compliance
+    nonisolated func upgradingToHTTPS() -> String {
+        guard lowercased().hasPrefix("http://") else { return self }
+        return "https://" + dropFirst(7)
     }
 }
