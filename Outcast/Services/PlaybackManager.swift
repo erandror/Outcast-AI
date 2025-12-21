@@ -38,6 +38,7 @@ class PlaybackManager: ObservableObject {
     private init() {
         setupPlayerObservers()
         setupNotifications()
+        setupPlayerCallbacks()
     }
     
     // MARK: - Setup
@@ -77,6 +78,18 @@ class PlaybackManager: ObservableObject {
             name: .audioPlayerDidFinishPlaying,
             object: nil
         )
+    }
+    
+    private func setupPlayerCallbacks() {
+        // Handle interruptions (phone calls, Siri, etc.) with position save
+        player.onInterruptionBegan = { [weak self] in
+            self?.handleInterruption()
+        }
+        
+        // Handle route changes (headphones disconnected) with position save
+        player.onRouteChangeRequiresPause = { [weak self] in
+            self?.handleRouteChangeRequiresPause()
+        }
     }
     
     // MARK: - Load Episode
@@ -294,6 +307,11 @@ class PlaybackManager: ObservableObject {
     
     // MARK: - Database Operations
     
+    /// Save position explicitly (for background/termination)
+    func savePositionForBackground() async throws {
+        try await savePlaybackPosition()
+    }
+    
     /// Save current playback position to database
     private func savePlaybackPosition() async throws {
         guard let episode = currentEpisode else { return }
@@ -353,6 +371,20 @@ class PlaybackManager: ObservableObject {
         }
         
         await refreshCurrentEpisode()
+    }
+    
+    // MARK: - Event Handlers
+    
+    /// Handle audio interruption (phone call, Siri, etc.)
+    private func handleInterruption() {
+        // Pause with position save
+        pause()
+    }
+    
+    /// Handle route change that requires pause (headphones disconnected)
+    private func handleRouteChangeRequiresPause() {
+        // Pause with position save
+        pause()
     }
     
     // MARK: - Notification Handlers

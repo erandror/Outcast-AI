@@ -46,6 +46,17 @@ class AudioPlayer: ObservableObject {
     @Published private(set) var isBuffering = false
     @Published private(set) var playbackRate: Float = 1.0
     
+    // MARK: - Event Callbacks
+    
+    /// Called when audio interruption begins (phone call, Siri, etc.)
+    var onInterruptionBegan: (() -> Void)?
+    
+    /// Called when route change requires pause (headphones disconnected)
+    var onRouteChangeRequiresPause: (() -> Void)?
+    
+    /// Track if we were playing before interruption to resume properly
+    private(set) var wasPlayingBeforeInterruption: Bool = false
+    
     // MARK: - Private Properties
     
     private var player: AVPlayer?
@@ -282,14 +293,18 @@ class AudioPlayer: ObservableObject {
         
         switch type {
         case .began:
-            pause()
+            // Track whether we were playing before interruption so we can resume if needed
+            wasPlayingBeforeInterruption = isPlaying
+            // Notify PlaybackManager to handle pause with position save
+            onInterruptionBegan?()
         case .ended:
             guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else {
                 return
             }
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if options.contains(.shouldResume) {
+            if options.contains(.shouldResume) && wasPlayingBeforeInterruption {
                 play()
+                wasPlayingBeforeInterruption = false
             }
         @unknown default:
             break
@@ -305,8 +320,8 @@ class AudioPlayer: ObservableObject {
         
         switch reason {
         case .oldDeviceUnavailable:
-            // Pause if headphones are disconnected
-            pause()
+            // Notify PlaybackManager to handle pause with position save
+            onRouteChangeRequiresPause?()
         default:
             break
         }

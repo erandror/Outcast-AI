@@ -80,11 +80,18 @@ struct OutcastApp: App {
             }
             
         case .background:
+            // Save playback position before going to background
+            Task { @MainActor in
+                try? await PlaybackManager.shared.savePositionForBackground()
+            }
             // Schedule background refresh when app goes to background
             Self.scheduleBackgroundRefresh()
             
         case .inactive:
-            break
+            // Save playback position when becoming inactive (e.g., during interruptions)
+            Task { @MainActor in
+                try? await PlaybackManager.shared.savePositionForBackground()
+            }
             
         @unknown default:
             break
