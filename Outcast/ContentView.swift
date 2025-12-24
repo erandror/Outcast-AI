@@ -17,6 +17,20 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
+// MARK: - Episode Presentation Context
+
+struct EpisodePresentationContext: Identifiable {
+    let episodes: [EpisodeWithPodcast]
+    let selectedIndex: Int
+    let filter: ListenFilter  // For PlayerView filter bar context
+    
+    var id: String { episodes[selectedIndex].id }
+    
+    var selectedEpisode: EpisodeWithPodcast {
+        episodes[selectedIndex]
+    }
+}
+
 struct ContentView: View {
     private enum MainTab {
         case start
@@ -27,9 +41,8 @@ struct ContentView: View {
     }
     
     @State private var episodes: [EpisodeWithPodcast] = []
-    @State private var selectedEpisodeForPlayer: EpisodeWithPodcast?
-    @State private var selectedEpisodeForDetail: EpisodeWithPodcast?
-    @State private var showPlayer = false
+    @State private var playerContext: EpisodePresentationContext?
+    @State private var detailContext: EpisodePresentationContext?
     @State private var showImport = false
     @State private var isRefreshing = false
     @State private var lastRefreshDate: Date?
@@ -123,27 +136,26 @@ struct ContentView: View {
                 }
             }
         }
-        .fullScreenCover(item: $selectedEpisodeForPlayer) { episode in
-            if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
-                PlayerView(
-                    episodes: episodes,
-                    startIndex: index,
-                    initialFilter: selectedFilter,
-                    topicFilters: topicFilters,
-                    onEpisodeUpdated: {
-                        Task {
-                            await loadEpisodes()
-                        }
-                    }
-                )
-            }
-        }
-        .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
-            if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
-                EpisodeView(episodes: episodes, startIndex: index) {
+        .fullScreenCover(item: $playerContext) { context in
+            PlayerView(
+                episodes: context.episodes,
+                startIndex: context.selectedIndex,
+                initialFilter: context.filter,
+                topicFilters: topicFilters,
+                onEpisodeUpdated: {
                     Task {
                         await loadEpisodes()
                     }
+                }
+            )
+        }
+        .fullScreenCover(item: $detailContext) { context in
+            EpisodeView(
+                episodes: context.episodes,
+                startIndex: context.selectedIndex
+            ) {
+                Task {
+                    await loadEpisodes()
                 }
             }
         }
@@ -271,11 +283,22 @@ struct ContentView: View {
                             EpisodeListRow(
                                 episode: episode,
                                 onPlay: {
-                                    selectedEpisodeForPlayer = episode
-                                    showPlayer = true
+                                    if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
+                                        playerContext = EpisodePresentationContext(
+                                            episodes: episodes,
+                                            selectedIndex: index,
+                                            filter: selectedFilter
+                                        )
+                                    }
                                 },
                                 onTapEpisode: {
-                                    selectedEpisodeForDetail = episode
+                                    if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
+                                        detailContext = EpisodePresentationContext(
+                                            episodes: episodes,
+                                            selectedIndex: index,
+                                            filter: selectedFilter
+                                        )
+                                    }
                                 },
                                 onToggleUpNext: {
                                     Task {
@@ -329,12 +352,19 @@ struct ContentView: View {
     
     private var historyContent: some View {
         HistoryView(
-            onPlayEpisode: { episode in
-                selectedEpisodeForPlayer = episode
-                showPlayer = true
+            onPlayEpisode: { historyEpisodes, index in
+                playerContext = EpisodePresentationContext(
+                    episodes: historyEpisodes,
+                    selectedIndex: index,
+                    filter: .standard(.latest)  // History has no specific filter
+                )
             },
-            onTapEpisode: { episode in
-                selectedEpisodeForDetail = episode
+            onTapEpisode: { historyEpisodes, index in
+                detailContext = EpisodePresentationContext(
+                    episodes: historyEpisodes,
+                    selectedIndex: index,
+                    filter: .standard(.latest)
+                )
             }
         )
     }
@@ -396,8 +426,12 @@ struct ContentView: View {
             MiniPlayer(onTap: {
                 // Find the current episode in the episodes list and open player
                 if let currentEpisode = playbackManager.currentEpisode,
-                   let episode = episodes.first(where: { $0.episode.uuid == currentEpisode.uuid }) {
-                    selectedEpisodeForPlayer = episode
+                   let index = episodes.firstIndex(where: { $0.episode.uuid == currentEpisode.uuid }) {
+                    playerContext = EpisodePresentationContext(
+                        episodes: episodes,
+                        selectedIndex: index,
+                        filter: selectedFilter
+                    )
                 }
             })
             

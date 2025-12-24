@@ -12,8 +12,8 @@ struct HistoryView: View {
     @State private var historyEpisodes: [EpisodeWithPodcast] = []
     @State private var isLoading = false
     
-    let onPlayEpisode: (EpisodeWithPodcast) -> Void
-    let onTapEpisode: (EpisodeWithPodcast) -> Void
+    let onPlayEpisode: ([EpisodeWithPodcast], Int) -> Void
+    let onTapEpisode: ([EpisodeWithPodcast], Int) -> Void
     
     var body: some View {
         ScrollView {
@@ -34,10 +34,14 @@ struct HistoryView: View {
                             HistoryEpisodeRow(
                                 episode: episode,
                                 onPlay: {
-                                    onPlayEpisode(episode)
+                                    if let index = historyEpisodes.firstIndex(where: { $0.id == episode.id }) {
+                                        onPlayEpisode(historyEpisodes, index)
+                                    }
                                 },
                                 onTapEpisode: {
-                                    onTapEpisode(episode)
+                                    if let index = historyEpisodes.firstIndex(where: { $0.id == episode.id }) {
+                                        onTapEpisode(historyEpisodes, index)
+                                    }
                                 },
                                 onToggleUpNext: {
                                     Task {
@@ -273,8 +277,8 @@ struct HistoryEpisodeRow: View {
 
 #Preview {
     HistoryView(
-        onPlayEpisode: { _ in },
-        onTapEpisode: { _ in }
+        onPlayEpisode: { _, _ in },
+        onTapEpisode: { _, _ in }
     )
     .background(Color.black)
 }
