@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Test Podcast</title>
+    <itunes:author>Test Author</itunes:author>
+    <description>A test podcast description</description>
+    <item>
+      <title>Episode 1</title>
+      <guid>ep-001</guid>
+      <enclosure url="https://example.com/ep1.mp3" type="audio/mpeg" length="12345"/>
+      <pubDate>Mon, 01 Jan 2024 12:00:00 +0000</pubDate>
+      <itunes:duration>01:30:00</itunes:duration>
+    </item>
+  </channel>
+</rss>

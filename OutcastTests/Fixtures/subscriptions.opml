@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>My Podcasts</title>
+  </head>
+  <body>
+    <outline text="Tech Podcast" xmlUrl="https://example.com/tech.xml" htmlUrl="https://example.com/tech"/>
+    <outline text="News Daily" xmlUrl="https://example.com/news.xml"/>
+  </body>
+</opml>

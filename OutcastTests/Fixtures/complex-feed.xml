@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" 
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Complex Test Podcast</title>
+    <itunes:author>Complex Author</itunes:author>
+    <description>A complex podcast with extended metadata</description>
+    <itunes:subtitle>Test subtitle</itunes:subtitle>
+    <language>en-US</language>
+    <itunes:type>episodic</itunes:type>
+    <copyright>© 2024 Test Corp</copyright>
+    <itunes:explicit>false</itunes:explicit>
+    <itunes:owner>
+      <itunes:name>Owner Name</itunes:name>
+      <itunes:email>owner@example.com</itunes:email>
+    </itunes:owner>
+    <itunes:category text="Technology"/>
+    <itunes:category text="Business"/>
+    <podcast:funding url="https://example.com/support">Support the show</podcast:funding>
+    <content:encoded><![CDATA[<p>Rich HTML description</p>]]></content:encoded>
+    
+    <item>
+      <title>Complex Episode</title>
+      <guid>complex-001</guid>
+      <enclosure url="http://example.com/complex1.mp3" type="audio/mpeg" length="98765"/>
+      <pubDate>Wed, 15 Mar 2024 14:30:00 +0000</pubDate>
+      <itunes:duration>2:45:30</itunes:duration>
+      <itunes:episode>42</itunes:episode>
+      <itunes:season>2</itunes:season>
+      <itunes:episodeType>full</itunes:episodeType>
+      <itunes:explicit>true</itunes:explicit>
+      <itunes:subtitle>Episode subtitle</itunes:subtitle>
+      <itunes:author>Guest Author</itunes:author>
+      <link>https://example.com/episode/42</link>
+      <content:encoded><![CDATA[<p>Rich show notes with <strong>HTML</strong></p>]]></content:encoded>
+      <podcast:chapters url="https://example.com/chapters.json" type="application/json"/>
+      <podcast:transcript url="https://example.com/transcript.vtt" type="text/vtt" language="en"/>
+    </item>
+  </channel>
+</rss>

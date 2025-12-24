@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Edge Cases Podcast</title>
+    
+    <!-- Episode with minimal required fields -->
+    <item>
+      <title>Minimal Episode</title>
+      <guid>minimal-001</guid>
+      <enclosure url="https://example.com/minimal.mp3" type="audio/mpeg"/>
+    </item>
+    
+    <!-- Episode with duration in seconds only -->
+    <item>
+      <title>Duration in Seconds</title>
+      <guid>duration-seconds</guid>
+      <enclosure url="https://example.com/seconds.mp3" type="audio/mpeg"/>
+      <itunes:duration>3600</itunes:duration>
+    </item>
+    
+    <!-- Episode with duration in MM:SS -->
+    <item>
+      <title>Duration MM:SS</title>
+      <guid>duration-mmss</guid>
+      <enclosure url="https://example.com/mmss.mp3" type="audio/mpeg"/>
+      <itunes:duration>45:30</itunes:duration>
+    </item>
+    
+    <!-- Episode with HTML in description -->
+    <item>
+      <title>HTML Description</title>
+      <guid>html-desc</guid>
+      <enclosure url="https://example.com/html.mp3" type="audio/mpeg"/>
+      <description><![CDATA[<p>This has <strong>HTML</strong> tags that should be stripped</p>]]></description>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,206 @@
+---
+description: Testing guidelines for Outcast - all features require tests
+alwaysApply: true
+---
+
+# Testing Guidelines
+
+## Requirements
+
+**Every new feature MUST include unit tests.** This is non-negotiable for code quality and maintainability.
+
+- Every bug fix SHOULD include a regression test
+- Use Swift Testing (`import Testing`) for unit tests
+- Use XCTest for UI tests
+- Maintain test coverage for core functionality
+
+## Test Patterns
+
+### Unit Tests (Swift Testing)
+
+Use the modern Swift Testing framework for all unit tests:
+
+```swift
+import Testing
+@testable import Outcast
+
+struct MyFeatureTests {
+    @Test func testBasicBehavior() throws {
+        // Arrange
+        let service = MyService()
+        
+        // Act
+        let result = try service.doSomething()
+        
+        // Assert
+        #expect(result.isValid)
+    }
+}
+```
+
+### Database Tests
+
+Always use in-memory database for testing:
+
+```swift
+func makeTestDatabase() throws -> AppDatabase {
+    try AppDatabase(inMemory: true)
+}
+
+@Test func testDatabaseOperation() throws {
+    let db = try makeTestDatabase()
+    
+    // Test database operations
+    try db.write { database in
+        // Insert/update/delete
+    }
+    
+    let result = try db.read { database in
+        // Query data
+    }
+}
+```
+
+### Loading Test Fixtures
+
+Use the `TestFixtures` helper for loading XML/OPML files:
+
+```swift
+@Test func testParser() throws {
+    let feedData = TestFixtures.loadFixture("basic-feed", extension: "xml")
+    let parser = FeedParser()
+    let result = try parser.parse(data: feedData)
+    
+    #expect(result.podcast.title == "Expected Title")
+}
+```
+
+### UI Tests (XCTest)
+
+Use XCTest for UI and integration tests:
+
+```swift
+import XCTest
+
+final class MyUITests: XCTestCase {
+    @MainActor
+    func testUserFlow() throws {
+        let app = XCUIApplication()
+        app.launch()
+        
+        XCTAssertTrue(app.buttons["Action"].exists)
+    }
+}
+```
+
+## What to Test
+
+### High Priority (Always Test)
+
+1. **Parsers** - FeedParser, OPMLParser
+   - Valid input handling
+   - Edge cases (missing fields, malformed data)
+   - Error conditions
+   
+2. **Database Operations**
+   - CRUD operations
+   - Queries and filters
+   - Cascade deletes
+   - Migration integrity
+
+3. **Model Behavior**
+   - Computed properties
+   - Enum raw values
+   - Validation logic
+
+### Medium Priority (Test When Complex)
+
+4. **Service Logic**
+   - State machines (download status transitions)
+   - Background processing
+   - Network error handling
+
+5. **UI Integration**
+   - Navigation flows
+   - Accessibility labels
+   - Critical user paths
+
+## Test Organization
+
+```
+OutcastTests/
+├── Fixtures/              # Test data (XML, OPML)
+├── Helpers/              # Shared test utilities
+├── *Tests.swift          # Test files (one per feature/service)
+```
+
+## Best Practices
+
+### Keep Tests Isolated
+
+- No shared mutable state between tests
+- Each test should be independent
+- Use fresh database instances for each test
+
+### Test Error Paths
+
+Don't just test the happy path:
+
+```swift
+@Test func throwsOnInvalidData() throws {
+    #expect(throws: ParserError.self) {
+        try parser.parse(data: invalidData)
+    }
+}
+```
+
+### Use Descriptive Test Names
+
+```swift
+// Good
+@Test func parsesBasicRSSFeed()
+@Test func handlesMissingOptionalFields()
+
+// Bad
+@Test func test1()
+@Test func parserTest()
+```
+
+### Arrange-Act-Assert Pattern
+
+```swift
+@Test func testFeature() throws {
+    // Arrange - Set up test data
+    let input = "test data"
+    
+    // Act - Execute the code under test
+    let result = processInput(input)
+    
+    // Assert - Verify the result
+    #expect(result == expectedValue)
+}
+```
+
+## Running Tests
+
+- **All tests**: Cmd+U
+- **Single test**: Click diamond in gutter
+- **Test Navigator**: Cmd+6 for selective runs
+- **Performance tests**: Use `measure(metrics:)` for XCTest
+
+## Continuous Improvement
+
+- Add tests when fixing bugs (regression tests)
+- Review test coverage periodically
+- Update fixtures when feed formats evolve
+- Keep tests fast - use in-memory databases and fixtures
+
+## When to Skip Tests
+
+Very rarely. Acceptable cases:
+
+- Trivial getters/setters with no logic
+- SwiftUI view code (use previews instead)
+- One-line delegation
+
+**Everything else needs tests.**
