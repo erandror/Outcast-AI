@@ -372,8 +372,8 @@ struct PlaybackContextTests {
                 guid: "upnext-ep-\(i)",
                 title: "Up Next Episode \(i)",
                 audioURL: "https://example.com/upnext-ep\(i).mp3",
-                playingStatus: .notPlayed,
-                publishedDate: Date().addingTimeInterval(Double(-i * 86400)) // Staggered dates
+                publishedDate: Date().addingTimeInterval(Double(-i * 86400)), // Staggered dates
+                playingStatus: .notPlayed
             )
             try db.write { database in
                 try episode.insert(database)
@@ -663,8 +663,8 @@ struct PlaybackContextTests {
             title: "Up Next Only Episode",
             audioURL: "https://example.com/upnext.mp3",
             duration: 3600,
-            playingStatus: .notPlayed,
-            publishedDate: Date()
+            publishedDate: Date(),
+            playingStatus: .notPlayed
         )
         try db.write { database in
             try upNextEpisode.insert(database)
