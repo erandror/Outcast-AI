@@ -17,20 +17,6 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
-// MARK: - Episode Presentation Context
-
-struct EpisodePresentationContext: Identifiable {
-    let episodes: [EpisodeWithPodcast]
-    let selectedIndex: Int
-    let filter: ListenFilter  // For PlayerView filter bar context
-    
-    var id: String { episodes[selectedIndex].id }
-    
-    var selectedEpisode: EpisodeWithPodcast {
-        episodes[selectedIndex]
-    }
-}
-
 struct ContentView: View {
     private enum MainTab {
         case start
@@ -41,8 +27,10 @@ struct ContentView: View {
     }
     
     @State private var episodes: [EpisodeWithPodcast] = []
-    @State private var playerContext: EpisodePresentationContext?
-    @State private var detailContext: EpisodePresentationContext?
+    @State private var selectedEpisodeForPlayer: EpisodeWithPodcast?
+    @State private var selectedEpisodeForDetail: EpisodeWithPodcast?
+    @State private var showPlayer = false
+    @State private var playerContext: PlaybackContext?
     @State private var showImport = false
     @State private var isRefreshing = false
     @State private var lastRefreshDate: Date?
@@ -112,6 +100,8 @@ struct ContentView: View {
         .task {
             await loadTopicFilters()
             await loadEpisodes()
+            // Restore last playback session (shows mini-player if episode was playing)
+            await playbackManager.restoreLastSession()
             // Start monitoring import progress
             await monitorImportProgress()
         }
@@ -139,7 +129,7 @@ struct ContentView: View {
         .fullScreenCover(item: $playerContext) { context in
             PlayerView(
                 episodes: context.episodes,
-                startIndex: context.selectedIndex,
+                startIndex: context.currentIndex,
                 initialFilter: context.filter,
                 topicFilters: topicFilters,
                 onEpisodeUpdated: {
@@ -149,13 +139,12 @@ struct ContentView: View {
                 }
             )
         }
-        .fullScreenCover(item: $detailContext) { context in
-            EpisodeView(
-                episodes: context.episodes,
-                startIndex: context.selectedIndex
-            ) {
-                Task {
-                    await loadEpisodes()
+        .fullScreenCover(item: $selectedEpisodeForDetail) { episode in
+            if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
+                EpisodeView(episodes: episodes, startIndex: index) {
+                    Task {
+                        await loadEpisodes()
+                    }
                 }
             }
         }
@@ -283,22 +272,17 @@ struct ContentView: View {
                             EpisodeListRow(
                                 episode: episode,
                                 onPlay: {
+                                    // Set playback context with current filter and episodes
                                     if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
-                                        playerContext = EpisodePresentationContext(
+                                        playerContext = PlaybackContext(
+                                            filter: selectedFilter,
                                             episodes: episodes,
-                                            selectedIndex: index,
-                                            filter: selectedFilter
+                                            currentIndex: index
                                         )
                                     }
                                 },
                                 onTapEpisode: {
-                                    if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
-                                        detailContext = EpisodePresentationContext(
-                                            episodes: episodes,
-                                            selectedIndex: index,
-                                            filter: selectedFilter
-                                        )
-                                    }
+                                    selectedEpisodeForDetail = episode
                                 },
                                 onToggleUpNext: {
                                     Task {
@@ -352,19 +336,11 @@ struct ContentView: View {
     
     private var historyContent: some View {
         HistoryView(
-            onPlayEpisode: { historyEpisodes, index in
-                playerContext = EpisodePresentationContext(
-                    episodes: historyEpisodes,
-                    selectedIndex: index,
-                    filter: .standard(.latest)  // History has no specific filter
-                )
+            onPlayEpisode: { context in
+                playerContext = context
             },
-            onTapEpisode: { historyEpisodes, index in
-                detailContext = EpisodePresentationContext(
-                    episodes: historyEpisodes,
-                    selectedIndex: index,
-                    filter: .standard(.latest)
-                )
+            onTapEpisode: { episode in
+                selectedEpisodeForDetail = episode
             }
         )
     }
@@ -424,13 +400,18 @@ struct ContentView: View {
     private var bottomOverlay: some View {
         VStack(spacing: 0) {
             MiniPlayer(onTap: {
-                // Find the current episode in the episodes list and open player
-                if let currentEpisode = playbackManager.currentEpisode,
-                   let index = episodes.firstIndex(where: { $0.episode.uuid == currentEpisode.uuid }) {
-                    playerContext = EpisodePresentationContext(
-                        episodes: episodes,
-                        selectedIndex: index,
-                        filter: selectedFilter
+                // Use stored playback context if available, otherwise create fallback
+                if let context = playbackManager.playbackContext {
+                    // Use stored context from when episode was started
+                    playerContext = context
+                } else if let episode = playbackManager.currentEpisode,
+                          let podcast = playbackManager.currentPodcast {
+                    // Fallback: create single-episode context
+                    let episodeWithPodcast = EpisodeWithPodcast(episode: episode, podcast: podcast)
+                    playerContext = PlaybackContext(
+                        filter: .standard(.upNext),
+                        episodes: [episodeWithPodcast],
+                        currentIndex: 0
                     )
                 }
             })
@@ -633,11 +614,11 @@ struct ContentView: View {
                 selectedFilter = filter
                 episodes = filterEpisodes
                 
-                // Open PlayerView with the first episode
-                playerContext = EpisodePresentationContext(
+                // Create playback context and open PlayerView with the first episode
+                playerContext = PlaybackContext(
+                    filter: filter,
                     episodes: filterEpisodes,
-                    selectedIndex: 0,
-                    filter: filter
+                    currentIndex: 0
                 )
             }
         } catch {

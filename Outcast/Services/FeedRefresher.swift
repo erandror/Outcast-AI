@@ -814,9 +814,15 @@ extension Data {
 
 extension UserDefaults {
     private static let lastFeedRefreshKey = "lastFeedRefresh"
+    private static let lastPlayingEpisodeUUIDKey = "lastPlayingEpisodeUUID"
     
     static var lastFeedRefresh: Date? {
         get { standard.object(forKey: lastFeedRefreshKey) as? Date }
         set { standard.set(newValue, forKey: lastFeedRefreshKey) }
+    }
+    
+    static var lastPlayingEpisodeUUID: String? {
+        get { standard.string(forKey: lastPlayingEpisodeUUIDKey) }
+        set { standard.set(newValue, forKey: lastPlayingEpisodeUUIDKey) }
     }
 }

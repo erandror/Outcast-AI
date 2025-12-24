@@ -268,6 +268,13 @@ struct PlayerView: View {
             )
         }
         .task {
+            // Set playback context in PlaybackManager
+            playbackManager.setPlaybackContext(
+                filter: initialFilter,
+                episodes: episodes,
+                currentIndex: currentIndex
+            )
+            
             // Load episode into playback manager and start playing
             await loadCurrentEpisode()
             // Prefetch adjacent episode images
@@ -298,6 +305,9 @@ struct PlayerView: View {
             dragOffset = 0
             isAnimating = false
             
+            // Update playback context index
+            playbackManager.updatePlaybackContextIndex(currentIndex)
+            
             // Load new episode and prefetch adjacent images
             Task {
                 await loadCurrentEpisode()
@@ -321,6 +331,9 @@ struct PlayerView: View {
             currentIndex -= 1
             dragOffset = 0
             isAnimating = false
+            
+            // Update playback context index
+            playbackManager.updatePlaybackContextIndex(currentIndex)
             
             // Load new episode and prefetch adjacent images
             Task {
@@ -456,6 +469,9 @@ struct PlayerView: View {
                 selectedFilter = newFilter
                 episodes = newEpisodes
                 currentIndex = 0
+                
+                // Update playback context with new filter and episodes
+                playbackManager.updatePlaybackContextEpisodes(newEpisodes, newIndex: 0)
                 
                 // Reset drag offsets
                 dragOffset = 0

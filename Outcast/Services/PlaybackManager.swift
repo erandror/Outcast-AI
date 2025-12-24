@@ -11,6 +11,21 @@ import Combine
 import AVFoundation
 import GRDB
 
+// MARK: - Playback Context
+
+/// Tracks the playback queue context (filter, episodes, current index)
+struct PlaybackContext: Sendable, Identifiable {
+    let id = UUID()
+    let filter: ListenFilter
+    var episodes: [EpisodeWithPodcast]
+    var currentIndex: Int
+    
+    var currentEpisode: EpisodeWithPodcast? {
+        guard currentIndex >= 0 && currentIndex < episodes.count else { return nil }
+        return episodes[currentIndex]
+    }
+}
+
 /// Coordinates playback, database updates, and UI state
 @MainActor
 class PlaybackManager: ObservableObject {
@@ -26,6 +41,7 @@ class PlaybackManager: ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var playbackRate: Float = 1.0
     @Published private(set) var isBuffering = false
+    @Published private(set) var playbackContext: PlaybackContext?
     
     // MARK: - Private Properties
     
@@ -133,6 +149,9 @@ class PlaybackManager: ObservableObject {
         currentEpisode = episodeToPlay
         currentPodcast = podcast
         
+        // Save episode UUID to UserDefaults for session restoration
+        UserDefaults.lastPlayingEpisodeUUID = episodeToPlay.uuid
+        
         // Determine playback URL
         let playbackURL: URL
         if episodeToPlay.downloadStatus == .downloaded,
@@ -159,6 +178,40 @@ class PlaybackManager: ObservableObject {
         
         if autoPlay {
             try await play()
+        }
+    }
+    
+    /// Restore last playback session from UserDefaults (called on app launch)
+    func restoreLastSession() async {
+        // Check if there's a saved episode UUID
+        guard let episodeUUID = UserDefaults.lastPlayingEpisodeUUID else {
+            return
+        }
+        
+        do {
+            // Fetch the episode from database
+            let episode = try await database.readAsync { db in
+                try EpisodeRecord.filter(Column("uuid") == episodeUUID).fetchOne(db)
+            }
+            
+            guard let episode = episode else {
+                // Episode no longer exists, clear the saved UUID
+                UserDefaults.lastPlayingEpisodeUUID = nil
+                return
+            }
+            
+            // Don't restore if episode is completed
+            if episode.playingStatus == .completed {
+                UserDefaults.lastPlayingEpisodeUUID = nil
+                return
+            }
+            
+            // Load the episode in paused state
+            try await load(episode: episode, autoPlay: false)
+            
+        } catch {
+            print("Failed to restore last session: \(error)")
+            UserDefaults.lastPlayingEpisodeUUID = nil
         }
     }
     
@@ -259,6 +312,37 @@ class PlaybackManager: ObservableObject {
     /// Set playback speed
     func setPlaybackRate(_ rate: Float) {
         player.setPlaybackRate(rate)
+    }
+    
+    // MARK: - Playback Context Management
+    
+    /// Set the playback context (queue from which episode is playing)
+    func setPlaybackContext(filter: ListenFilter, episodes: [EpisodeWithPodcast], currentIndex: Int) {
+        playbackContext = PlaybackContext(
+            filter: filter,
+            episodes: episodes,
+            currentIndex: currentIndex
+        )
+    }
+    
+    /// Update the current index in playback context (when swiping through episodes)
+    func updatePlaybackContextIndex(_ newIndex: Int) {
+        guard var context = playbackContext else { return }
+        context.currentIndex = newIndex
+        playbackContext = context
+    }
+    
+    /// Update the entire episodes array in playback context (when filter changes)
+    func updatePlaybackContextEpisodes(_ newEpisodes: [EpisodeWithPodcast], newIndex: Int) {
+        guard var context = playbackContext else { return }
+        context.episodes = newEpisodes
+        context.currentIndex = newIndex
+        playbackContext = context
+    }
+    
+    /// Clear playback context
+    func clearPlaybackContext() {
+        playbackContext = nil
     }
     
     // MARK: - Update Timer
@@ -396,6 +480,9 @@ class PlaybackManager: ObservableObject {
             
             // Clear Now Playing info
             NowPlayingManager.shared.clearNowPlaying()
+            
+            // Clear saved episode UUID (episode completed, don't restore on next launch)
+            UserDefaults.lastPlayingEpisodeUUID = nil
             
             // Clear current episode
             currentEpisode = nil

@@ -12,8 +12,8 @@ struct HistoryView: View {
     @State private var historyEpisodes: [EpisodeWithPodcast] = []
     @State private var isLoading = false
     
-    let onPlayEpisode: ([EpisodeWithPodcast], Int) -> Void
-    let onTapEpisode: ([EpisodeWithPodcast], Int) -> Void
+    let onPlayEpisode: (PlaybackContext) -> Void
+    let onTapEpisode: (EpisodeWithPodcast) -> Void
     
     var body: some View {
         ScrollView {
@@ -34,14 +34,18 @@ struct HistoryView: View {
                             HistoryEpisodeRow(
                                 episode: episode,
                                 onPlay: {
+                                    // Create playback context with history episodes
                                     if let index = historyEpisodes.firstIndex(where: { $0.id == episode.id }) {
-                                        onPlayEpisode(historyEpisodes, index)
+                                        let context = PlaybackContext(
+                                            filter: .standard(.latest),  // History doesn't have a specific filter
+                                            episodes: historyEpisodes,
+                                            currentIndex: index
+                                        )
+                                        onPlayEpisode(context)
                                     }
                                 },
                                 onTapEpisode: {
-                                    if let index = historyEpisodes.firstIndex(where: { $0.id == episode.id }) {
-                                        onTapEpisode(historyEpisodes, index)
-                                    }
+                                    onTapEpisode(episode)
                                 },
                                 onToggleUpNext: {
                                     Task {
@@ -277,8 +281,8 @@ struct HistoryEpisodeRow: View {
 
 #Preview {
     HistoryView(
-        onPlayEpisode: { _, _ in },
-        onTapEpisode: { _, _ in }
+        onPlayEpisode: { context in },
+        onTapEpisode: { _ in }
     )
     .background(Color.black)
 }
