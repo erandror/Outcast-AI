@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Never build the app yourself. The user has XCode open and will build at his discretion on a simulator or on a real device. If you need a build to verify something - ask the user to build and await confirmation. 

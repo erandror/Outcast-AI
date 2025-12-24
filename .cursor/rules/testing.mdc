@@ -1,8 +1,7 @@
 ---
-description: Testing guidelines for Outcast - all features require tests
-alwaysApply: true
+description: Testing guidelines for Outcast - all features require up to date tests, read when writing a test.
+alwaysApply: false
 ---
-
 # Testing Guidelines
 
 ## Requirements
