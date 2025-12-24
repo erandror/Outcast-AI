@@ -726,4 +726,97 @@ struct PlaybackContextTests {
         let shouldCreateContext = !historyEpisodes.isEmpty
         #expect(shouldCreateContext == false)
     }
+    
+    @Test func upNextIncludesInProgressEpisodes() throws {
+        let db = try makeTestDatabase()
+        
+        // Arrange - Create Up Next podcast
+        var podcast = PodcastRecord(
+            feedURL: "https://example.com/feed.xml",
+            title: "Up Next Podcast",
+            isUpNext: true
+        )
+        try db.write { database in
+            try podcast.insert(database)
+        }
+        
+        // Create in-progress episode (simulates partially listened)
+        var inProgressEpisode = EpisodeRecord(
+            podcastId: podcast.id!,
+            guid: "in-progress-ep",
+            title: "In Progress Episode",
+            audioURL: "https://example.com/ep.mp3",
+            playedUpTo: 300, // 5 minutes in
+            playingStatus: .inProgress
+        )
+        try db.write { database in
+            try inProgressEpisode.insert(database)
+        }
+        
+        // Act
+        let episodes = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(
+                filter: .standard(.upNext),
+                limit: 50,
+                offset: 0,
+                db: database
+            )
+        }
+        
+        // Assert - In-progress episode should appear in Up Next
+        #expect(episodes.count == 1)
+        #expect(episodes[0].episode.title == "In Progress Episode")
+        #expect(episodes[0].episode.playingStatus == .inProgress)
+    }
+    
+    @Test func upNextExcludesCompletedEpisodes() throws {
+        let db = try makeTestDatabase()
+        
+        // Arrange
+        var podcast = PodcastRecord(
+            feedURL: "https://example.com/feed.xml",
+            title: "Up Next Podcast",
+            isUpNext: true
+        )
+        try db.write { database in
+            try podcast.insert(database)
+        }
+        
+        // Create one of each status
+        let statuses: [(PlayingStatus, String)] = [
+            (.notPlayed, "Not Played Episode"),
+            (.inProgress, "In Progress Episode"),
+            (.completed, "Completed Episode")
+        ]
+        
+        for (status, title) in statuses {
+            var episode = EpisodeRecord(
+                podcastId: podcast.id!,
+                guid: "ep-\(status.rawValue)",
+                title: title,
+                audioURL: "https://example.com/ep\(status.rawValue).mp3",
+                playingStatus: status
+            )
+            try db.write { database in
+                try episode.insert(database)
+            }
+        }
+        
+        // Act
+        let episodes = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(
+                filter: .standard(.upNext),
+                limit: 50,
+                offset: 0,
+                db: database
+            )
+        }
+        
+        // Assert - Should include notPlayed and inProgress, exclude completed
+        #expect(episodes.count == 2)
+        let titles = episodes.map { $0.episode.title }
+        #expect(titles.contains("Not Played Episode"))
+        #expect(titles.contains("In Progress Episode"))
+        #expect(!titles.contains("Completed Episode"))
+    }
 }

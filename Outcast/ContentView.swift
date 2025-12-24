@@ -713,12 +713,12 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         }
     }
     
-    // MARK: - Up Next (unplayed episodes from podcasts marked as Up Next)
+    // MARK: - Up Next (unfinished episodes from podcasts marked as Up Next)
     
     private static func fetchUpNext(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
-        // Fetch unplayed episodes from podcasts where isUpNext is true
+        // Fetch episodes (excluding completed) from podcasts where isUpNext is true
         let request = EpisodeRecord
-            .filter(Column("playingStatus") == PlayingStatus.notPlayed.rawValue)
+            .filter(Column("playingStatus") != PlayingStatus.completed.rawValue)
             .joining(required: EpisodeRecord.podcast.filter(Column("isUpNext") == true))
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
