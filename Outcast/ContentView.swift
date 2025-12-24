@@ -657,6 +657,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     
     static func fetchLatest(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
         let request = EpisodeRecord
+            .filter(Column("isDownvoted") == false)
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
             .limit(limit, offset: offset)
@@ -716,9 +717,10 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
     // MARK: - Up Next (unfinished episodes from podcasts marked as Up Next)
     
     private static func fetchUpNext(limit: Int, offset: Int = 0, db: Database) throws -> [EpisodeWithPodcast] {
-        // Fetch episodes (excluding completed) from podcasts where isUpNext is true
+        // Fetch episodes (excluding completed and downvoted) from podcasts where isUpNext is true
         let request = EpisodeRecord
             .filter(Column("playingStatus") != PlayingStatus.completed.rawValue)
+            .filter(Column("isDownvoted") == false)
             .joining(required: EpisodeRecord.podcast.filter(Column("isUpNext") == true))
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
@@ -738,6 +740,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         // Fetch saved episodes ordered by savedAt (most recent first)
         let request = EpisodeRecord
             .filter(Column("isSaved") == true)
+            .filter(Column("isDownvoted") == false)
             .including(required: EpisodeRecord.podcast)
             .order(Column("savedAt").desc)
             .limit(limit, offset: offset)
@@ -756,6 +759,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         let request = EpisodeRecord
             .filter(Column("duration") < 1500) // 25 minutes in seconds
             .filter(Column("duration") > 0) // Exclude episodes with no duration
+            .filter(Column("isDownvoted") == false)
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
             .limit(limit, offset: offset)
@@ -784,7 +788,9 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         "needsTagging",  // Added in v6 migration
         "lastPlayedAt",  // Added in v7 migration
         "isSaved",  // Added in v10 migration
-        "savedAt"  // Added in v10 migration
+        "savedAt",  // Added in v10 migration
+        "isDownvoted",  // Added in v11 migration
+        "downvotedAt"  // Added in v11 migration
     ]
     
     // Helper function to parse a flattened row into EpisodeWithPodcast
@@ -896,7 +902,12 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         }
         
         // Combine all conditions with OR (any match qualifies)
-        let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " OR ")
+        let whereClause: String
+        if conditions.isEmpty {
+            whereClause = "WHERE episode.isDownvoted = 0"
+        } else {
+            whereClause = "WHERE (" + conditions.joined(separator: " OR ") + ") AND episode.isDownvoted = 0"
+        }
         
         let sql = """
             SELECT episode.*, podcast.*
@@ -940,6 +951,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         // This properly namespaces columns to avoid conflicts
         let request = EpisodeRecord
             .filter(keys: episodeIds)
+            .filter(Column("isDownvoted") == false)
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
             .limit(limit, offset: offset)
@@ -978,6 +990,7 @@ struct EpisodeWithPodcast: Identifiable, Sendable {
         // Use GRDB's association system to fetch episodes with podcasts
         let request = EpisodeRecord
             .filter(keys: episodeIds)
+            .filter(Column("isDownvoted") == false)
             .including(required: EpisodeRecord.podcast)
             .order(Column("publishedDate").desc)
             .limit(limit, offset: offset)

@@ -265,6 +265,15 @@ final class AppDatabase: Sendable {
             try db.create(index: "episode_savedAt", on: "episode", columns: ["savedAt"])
         }
         
+        // Migration v11: Add downvote feature
+        migrator.registerMigration("v11_downvote") { db in
+            try db.alter(table: "episode") { t in
+                t.add(column: "isDownvoted", .boolean).notNull().defaults(to: false)
+                t.add(column: "downvotedAt", .datetime)
+            }
+            try db.create(index: "episode_isDownvoted", on: "episode", columns: ["isDownvoted"])
+        }
+        
         return migrator
     }
 }

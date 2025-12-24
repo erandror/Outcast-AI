@@ -83,6 +83,10 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
     var isSaved: Bool
     var savedAt: Date?
     
+    // Downvoted episodes
+    var isDownvoted: Bool
+    var downvotedAt: Date?
+    
     init(
         id: Int64? = nil,
         uuid: String = UUID().uuidString,
@@ -120,7 +124,9 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         autoDownloadStatus: AutoDownloadStatus = .notSpecified,
         needsTagging: Bool = true,
         isSaved: Bool = false,
-        savedAt: Date? = nil
+        savedAt: Date? = nil,
+        isDownvoted: Bool = false,
+        downvotedAt: Date? = nil
     ) {
         self.id = id
         self.uuid = uuid
@@ -159,6 +165,8 @@ struct EpisodeRecord: Identifiable, Codable, Sendable {
         self.needsTagging = needsTagging
         self.isSaved = isSaved
         self.savedAt = savedAt
+        self.isDownvoted = isDownvoted
+        self.downvotedAt = downvotedAt
     }
 }
 
@@ -320,6 +328,21 @@ extension EpisodeRecord {
             .order(Column("savedAt").desc)
             .limit(limit, offset: offset)
             .fetchAll(db)
+    }
+    
+    /// Mark episode as downvoted
+    mutating func markDownvoted(db: Database) throws {
+        isDownvoted = true
+        downvotedAt = Date()
+        try update(db)
+    }
+    
+    /// Count downvoted episodes for a specific podcast
+    static func countDownvotedForPodcast(podcastId: Int64, db: Database) throws -> Int {
+        try EpisodeRecord
+            .filter(Column("podcastId") == podcastId)
+            .filter(Column("isDownvoted") == true)
+            .fetchCount(db)
     }
 }
 

@@ -28,6 +28,9 @@ struct PlayerView: View {
     @State private var isLoadingFilter = false
     @State private var previousFilterEpisodes: [EpisodeWithPodcast] = []
     @State private var nextFilterEpisodes: [EpisodeWithPodcast] = []
+    @State private var showingUnfollowDialog = false
+    @State private var pendingUnfollowPodcast: PodcastRecord?
+    @State private var pendingUnfollowCount: Int = 0
     
     private enum DragAxis {
         case horizontal
@@ -285,6 +288,30 @@ struct PlayerView: View {
         .sheet(isPresented: $showingPodcastDetail) {
             NavigationStack {
                 ShowView(podcast: currentEpisode.podcast)
+            }
+        }
+        .sheet(isPresented: $showingUnfollowDialog) {
+            if let podcast = pendingUnfollowPodcast {
+                UnfollowDialog(
+                    podcast: podcast,
+                    downvoteCount: pendingUnfollowCount,
+                    onRemoveFromUpNext: {
+                        Task {
+                            await removeFromUpNext(podcast: podcast)
+                        }
+                    },
+                    onUnfollow: {
+                        Task {
+                            await unfollowPodcast(podcast: podcast)
+                        }
+                    },
+                    onKeep: {
+                        Task {
+                            await skipToNextOrDismiss()
+                        }
+                    }
+                )
+                .presentationDetents([.large])
             }
         }
     }
@@ -560,7 +587,17 @@ struct PlayerView: View {
             }
             
             // Playback controls
-            HStack(spacing: 48) {
+            HStack(spacing: 40) {
+                Button {
+                    Task {
+                        await thumbsDown()
+                    }
+                } label: {
+                    Image(systemName: "hand.thumbsdown")
+                        .font(.title)
+                        .foregroundStyle(.white)
+                }
+                
                 Button {
                     Task {
                         await playbackManager.skipBackward(by: 15)
@@ -766,6 +803,85 @@ struct PlayerView: View {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         } else {
             return String(format: "%d:%02d", minutes, seconds)
+        }
+    }
+    
+    // MARK: - Thumbs Down
+    
+    private func thumbsDown() async {
+        do {
+            // Mark episode as downvoted
+            try await AppDatabase.shared.writeAsync { db in
+                var updatedEpisode = currentEpisode.episode
+                try updatedEpisode.markDownvoted(db: db)
+            }
+            
+            // Count downvoted episodes for this podcast
+            let downvoteCount = try await AppDatabase.shared.readAsync { db in
+                try EpisodeRecord.countDownvotedForPodcast(podcastId: currentEpisode.podcast.id!, db: db)
+            }
+            
+            // If 2 or more downvotes, show unfollow dialog
+            if downvoteCount >= 2 {
+                await MainActor.run {
+                    pendingUnfollowPodcast = currentEpisode.podcast
+                    pendingUnfollowCount = downvoteCount
+                    showingUnfollowDialog = true
+                }
+            } else {
+                // Otherwise, just skip to next
+                await skipToNextOrDismiss()
+            }
+            
+            // Notify parent to reload episodes (to remove from lists)
+            await MainActor.run {
+                onEpisodeUpdated?()
+            }
+        } catch {
+            print("Failed to downvote episode: \(error)")
+        }
+    }
+    
+    private func skipToNextOrDismiss() async {
+        await MainActor.run {
+            if hasNext {
+                // Skip to next episode
+                let screenHeight = UIScreen.main.bounds.height
+                goToNext(screenHeight: screenHeight)
+            } else {
+                // No more episodes, dismiss player
+                dismiss()
+            }
+        }
+    }
+    
+    private func removeFromUpNext(podcast: PodcastRecord) async {
+        do {
+            try await AppDatabase.shared.writeAsync { db in
+                var updatedPodcast = podcast
+                updatedPodcast.isUpNext = false
+                try updatedPodcast.update(db)
+            }
+            
+            // Skip to next episode or dismiss
+            await skipToNextOrDismiss()
+        } catch {
+            print("Failed to remove podcast from Up Next: \(error)")
+        }
+    }
+    
+    private func unfollowPodcast(podcast: PodcastRecord) async {
+        do {
+            try await AppDatabase.shared.writeAsync { db in
+                try podcast.deleteWithEpisodes(db: db)
+            }
+            
+            // Dismiss the player since we unfollowed
+            await MainActor.run {
+                dismiss()
+            }
+        } catch {
+            print("Failed to unfollow podcast: \(error)")
         }
     }
 }

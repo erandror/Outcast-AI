@@ -346,6 +346,205 @@ struct DatabaseTests {
         
         #expect(episodeTags.count == 2)
     }
+    
+    @Test func downvoteEpisode() throws {
+        let db = try makeTestDatabase()
+        
+        // Insert podcast and episode
+        var podcast = PodcastRecord(feedURL: "https://example.com/feed.xml", title: "Test Podcast")
+        try db.write { database in
+            try podcast.insert(database)
+        }
+        
+        guard let podcastId = podcast.id else {
+            throw TestError.missingId
+        }
+        
+        var episode = EpisodeRecord(
+            podcastId: podcastId,
+            guid: "ep-1",
+            title: "Test Episode",
+            audioURL: "https://example.com/ep1.mp3"
+        )
+        
+        try db.write { database in
+            try episode.insert(database)
+        }
+        
+        // Verify initial state
+        #expect(episode.isDownvoted == false)
+        #expect(episode.downvotedAt == nil)
+        
+        // Mark as downvoted
+        try db.write { database in
+            try episode.markDownvoted(db: database)
+        }
+        
+        // Fetch and verify
+        let updated = try db.read { database in
+            try EpisodeRecord.fetchByGuid("ep-1", podcastId: podcastId, db: database)
+        }
+        
+        #expect(updated?.isDownvoted == true)
+        #expect(updated?.downvotedAt != nil)
+    }
+    
+    @Test func countDownvotedForPodcast() throws {
+        let db = try makeTestDatabase()
+        
+        // Insert podcast
+        var podcast = PodcastRecord(feedURL: "https://example.com/feed.xml", title: "Test Podcast")
+        try db.write { database in
+            try podcast.insert(database)
+        }
+        
+        guard let podcastId = podcast.id else {
+            throw TestError.missingId
+        }
+        
+        // Insert 3 episodes
+        var episode1 = EpisodeRecord(podcastId: podcastId, guid: "ep-1", title: "Episode 1", audioURL: "https://example.com/ep1.mp3")
+        var episode2 = EpisodeRecord(podcastId: podcastId, guid: "ep-2", title: "Episode 2", audioURL: "https://example.com/ep2.mp3")
+        var episode3 = EpisodeRecord(podcastId: podcastId, guid: "ep-3", title: "Episode 3", audioURL: "https://example.com/ep3.mp3")
+        
+        try db.write { database in
+            try episode1.insert(database)
+            try episode2.insert(database)
+            try episode3.insert(database)
+        }
+        
+        // Downvote 2 episodes
+        try db.write { database in
+            try episode1.markDownvoted(db: database)
+            try episode2.markDownvoted(db: database)
+        }
+        
+        // Count downvoted episodes
+        let count = try db.read { database in
+            try EpisodeRecord.countDownvotedForPodcast(podcastId: podcastId, db: database)
+        }
+        
+        #expect(count == 2)
+    }
+    
+    @Test func downvotedEpisodesExcludedFromUpNext() throws {
+        let db = try makeTestDatabase()
+        
+        // Insert podcast marked as Up Next
+        var podcast = PodcastRecord(
+            feedURL: "https://example.com/feed.xml",
+            title: "Test Podcast",
+            isUpNext: true
+        )
+        try db.write { database in
+            try podcast.insert(database)
+        }
+        
+        guard let podcastId = podcast.id else {
+            throw TestError.missingId
+        }
+        
+        // Insert 2 episodes
+        var episode1 = EpisodeRecord(
+            podcastId: podcastId,
+            guid: "ep-1",
+            title: "Episode 1",
+            audioURL: "https://example.com/ep1.mp3",
+            playingStatus: .notPlayed
+        )
+        var episode2 = EpisodeRecord(
+            podcastId: podcastId,
+            guid: "ep-2",
+            title: "Episode 2",
+            audioURL: "https://example.com/ep2.mp3",
+            playingStatus: .notPlayed
+        )
+        
+        try db.write { database in
+            try episode1.insert(database)
+            try episode2.insert(database)
+        }
+        
+        // Initially, both should appear in Up Next
+        var upNext = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(filter: .standard(.upNext), limit: 50, offset: 0, db: database)
+        }
+        #expect(upNext.count == 2)
+        
+        // Downvote one episode
+        try db.write { database in
+            try episode1.markDownvoted(db: database)
+        }
+        
+        // Now only one should appear
+        upNext = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(filter: .standard(.upNext), limit: 50, offset: 0, db: database)
+        }
+        #expect(upNext.count == 1)
+        #expect(upNext[0].episode.guid == "ep-2")
+    }
+    
+    @Test func downvotedEpisodesExcludedFromFilters() throws {
+        let db = try makeTestDatabase()
+        
+        // Insert podcast
+        var podcast = PodcastRecord(feedURL: "https://example.com/feed.xml", title: "Test Podcast")
+        try db.write { database in
+            try podcast.insert(database)
+        }
+        
+        guard let podcastId = podcast.id else {
+            throw TestError.missingId
+        }
+        
+        // Insert episodes with different characteristics
+        var shortEpisode = EpisodeRecord(
+            podcastId: podcastId,
+            guid: "short",
+            title: "Short Episode",
+            audioURL: "https://example.com/short.mp3",
+            duration: 600  // 10 minutes
+        )
+        var savedEpisode = EpisodeRecord(
+            podcastId: podcastId,
+            guid: "saved",
+            title: "Saved Episode",
+            audioURL: "https://example.com/saved.mp3",
+            isSaved: true,
+            savedAt: Date()
+        )
+        
+        try db.write { database in
+            try shortEpisode.insert(database)
+            try savedEpisode.insert(database)
+        }
+        
+        // Both should appear in their respective filters
+        var shortEpisodes = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(filter: .standard(.short), limit: 50, offset: 0, db: database)
+        }
+        var savedEpisodes = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(filter: .standard(.saved), limit: 50, offset: 0, db: database)
+        }
+        #expect(shortEpisodes.count == 1)
+        #expect(savedEpisodes.count == 1)
+        
+        // Downvote both
+        try db.write { database in
+            try shortEpisode.markDownvoted(db: database)
+            try savedEpisode.markDownvoted(db: database)
+        }
+        
+        // Both should be excluded now
+        shortEpisodes = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(filter: .standard(.short), limit: 50, offset: 0, db: database)
+        }
+        savedEpisodes = try db.read { database in
+            try EpisodeWithPodcast.fetchFiltered(filter: .standard(.saved), limit: 50, offset: 0, db: database)
+        }
+        #expect(shortEpisodes.count == 0)
+        #expect(savedEpisodes.count == 0)
+    }
 }
 
 // MARK: - Test Errors
