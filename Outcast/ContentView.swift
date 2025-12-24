@@ -634,7 +634,11 @@ struct ContentView: View {
                 episodes = filterEpisodes
                 
                 // Open PlayerView with the first episode
-                selectedEpisodeForPlayer = filterEpisodes[0]
+                playerContext = EpisodePresentationContext(
+                    episodes: filterEpisodes,
+                    selectedIndex: 0,
+                    filter: filter
+                )
             }
         } catch {
             print("Failed to load episodes for filter: \(error)")
