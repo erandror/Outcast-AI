@@ -23,7 +23,7 @@ struct OPMLDocument: Sendable {
 }
 
 /// Errors that can occur during OPML parsing
-enum OPMLParserError: Error, LocalizedError {
+enum OPMLParserError: Error, LocalizedError, Equatable {
     case invalidData
     case parsingFailed(String)
     case noFeedsFound
