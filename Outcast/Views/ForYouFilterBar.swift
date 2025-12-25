@@ -60,7 +60,6 @@ struct ForYouFilterBar: View {
                 proxy.scrollTo(selectedFilter.id, anchor: .center)
             }
         }
-        .background(Color.black)
     }
 }
 

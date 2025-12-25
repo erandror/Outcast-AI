@@ -12,6 +12,7 @@ struct PlayerView: View {
     let startIndex: Int
     let initialFilter: ListenFilter
     let topicFilters: [SystemTagRecord]
+    let autoPlay: Bool
     let onEpisodeUpdated: (() -> Void)?
     
     @Environment(\.dismiss) private var dismiss
@@ -37,10 +38,11 @@ struct PlayerView: View {
         case vertical
     }
     
-    init(episodes: [EpisodeWithPodcast], startIndex: Int, initialFilter: ListenFilter, topicFilters: [SystemTagRecord], onEpisodeUpdated: (() -> Void)? = nil) {
+    init(episodes: [EpisodeWithPodcast], startIndex: Int, initialFilter: ListenFilter, topicFilters: [SystemTagRecord], autoPlay: Bool = true, onEpisodeUpdated: (() -> Void)? = nil) {
         self.startIndex = startIndex
         self.initialFilter = initialFilter
         self.topicFilters = topicFilters
+        self.autoPlay = autoPlay
         self.onEpisodeUpdated = onEpisodeUpdated
         _currentIndex = State(initialValue: startIndex)
         _episodes = State(initialValue: episodes)
@@ -141,34 +143,32 @@ struct PlayerView: View {
                     }
                 }
                 
-                // Filter bar at top
+                // Unified header with filter bar and close button
                 VStack {
-                    ForYouFilterBar(
-                        selectedFilter: $selectedFilter,
-                        topicFilters: topicFilters
-                    )
-                    .onChange(of: selectedFilter) { _, newFilter in
-                        Task {
-                            await switchToFilter(newFilter)
+                    HStack(alignment: .center, spacing: 0) {
+                        // Filter bar takes remaining space
+                        ForYouFilterBar(
+                            selectedFilter: $selectedFilter,
+                            topicFilters: topicFilters
+                        )
+                        .onChange(of: selectedFilter) { _, newFilter in
+                            Task {
+                                await switchToFilter(newFilter)
+                            }
                         }
-                    }
-                    
-                    Spacer()
-                }
-                
-                // Close button overlay
-                VStack {
-                    HStack {
-                        Spacer()
+                        
+                        // Close button at right edge
                         Button {
                             dismiss()
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.title3)
                                 .foregroundStyle(.white)
-                                .padding()
+                                .frame(width: 44, height: 44)
                         }
+                        .padding(.trailing, 8)
                     }
+                    
                     Spacer()
                 }
                 
@@ -336,8 +336,9 @@ struct PlayerView: View {
             playbackManager.updatePlaybackContextIndex(currentIndex)
             
             // Load new episode and prefetch adjacent images
+            // Preserve current playing state when swiping
             Task {
-                await loadCurrentEpisode()
+                await loadCurrentEpisode(autoPlay: playbackManager.isPlaying)
                 await prefetchAdjacentImages()
             }
         }
@@ -363,8 +364,9 @@ struct PlayerView: View {
             playbackManager.updatePlaybackContextIndex(currentIndex)
             
             // Load new episode and prefetch adjacent images
+            // Preserve current playing state when swiping
             Task {
-                await loadCurrentEpisode()
+                await loadCurrentEpisode(autoPlay: playbackManager.isPlaying)
                 await prefetchAdjacentImages()
             }
         }
@@ -508,7 +510,8 @@ struct PlayerView: View {
             }
             
             // Load the first episode and prefetch images
-            await loadCurrentEpisode()
+            // Preserve current playing state when switching filters
+            await loadCurrentEpisode(autoPlay: playbackManager.isPlaying)
             await prefetchAdjacentImages()
             await prefetchAdjacentFilters()
             
@@ -527,16 +530,17 @@ struct PlayerView: View {
     @ViewBuilder
     private func episodeCard(for episode: EpisodeWithPodcast, offset: CGFloat) -> some View {
         VStack(spacing: 32) {
-            // Top spacer
+            // Top spacer with minimum height to avoid header overlap
             Spacer()
+                .frame(minHeight: 56)
             
-            // Artwork
+            // Artwork - slightly smaller to ensure full visibility
             EpisodeArtwork(
                 episode: episode.episode,
                 podcast: episode.podcast,
                 size: .large
             )
-            .frame(width: 280, height: 280)
+            .frame(width: 260, height: 260)
             .shadow(color: .white.opacity(0.1), radius: 20)
             
             // Episode info
@@ -587,7 +591,7 @@ struct PlayerView: View {
             }
             
             // Playback controls
-            HStack(spacing: 40) {
+            HStack {
                 Button {
                     Task {
                         await thumbsDown()
@@ -597,6 +601,8 @@ struct PlayerView: View {
                         .font(.title)
                         .foregroundStyle(.white)
                 }
+                
+                Spacer()
                 
                 Button {
                     Task {
@@ -608,6 +614,8 @@ struct PlayerView: View {
                         .foregroundStyle(.white)
                 }
                 
+                Spacer()
+                
                 Button {
                     playbackManager.togglePlayPause()
                 } label: {
@@ -615,6 +623,8 @@ struct PlayerView: View {
                         .font(.system(size: 72))
                         .foregroundStyle(.white)
                 }
+                
+                Spacer()
                 
                 Button {
                     Task {
@@ -626,6 +636,8 @@ struct PlayerView: View {
                         .foregroundStyle(.white)
                 }
                 
+                Spacer()
+                
                 Button {
                     Task {
                         await toggleSaved()
@@ -636,6 +648,7 @@ struct PlayerView: View {
                         .foregroundStyle(.white)
                 }
             }
+            .padding(.horizontal, 32)
             
             // Bottom spacer
             Spacer()
@@ -643,9 +656,10 @@ struct PlayerView: View {
         .offset(y: offset)
     }
     
-    private func loadCurrentEpisode() async {
+    private func loadCurrentEpisode(autoPlay: Bool? = nil) async {
         do {
-            try await playbackManager.load(episode: currentEpisode.episode, autoPlay: true)
+            let shouldAutoPlay = autoPlay ?? self.autoPlay
+            try await playbackManager.load(episode: currentEpisode.episode, autoPlay: shouldAutoPlay)
         } catch {
             print("Failed to load episode: \(error)")
         }
@@ -920,6 +934,7 @@ struct PlayerView: View {
         startIndex: 0,
         initialFilter: .standard(.upNext),
         topicFilters: [],
+        autoPlay: true,
         onEpisodeUpdated: nil
     )
 }

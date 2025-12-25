@@ -135,6 +135,7 @@ struct ContentView: View {
                 startIndex: context.currentIndex,
                 initialFilter: context.filter,
                 topicFilters: topicFilters,
+                autoPlay: playbackManager.isPlaying,
                 onEpisodeUpdated: {
                     Task {
                         await loadEpisodes()
