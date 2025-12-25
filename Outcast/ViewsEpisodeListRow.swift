@@ -7,9 +7,16 @@
 
 import SwiftUI
 
+/// Variant for different episode row display modes
+enum EpisodeRowVariant {
+    case standard   // Shows publish date, checkmark for completed
+    case history    // Shows last played date, replay icon for completed
+}
+
 /// Reusable episode row for displaying episode information
 struct EpisodeListRow: View {
     let episode: EpisodeWithPodcast
+    var variant: EpisodeRowVariant = .standard
     let onPlay: () -> Void
     let onTapEpisode: () -> Void
     let onToggleUpNext: () -> Void
@@ -38,34 +45,76 @@ struct EpisodeListRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 
                 HStack(spacing: 4) {
-                    // Show remaining time for in-progress episodes, total duration otherwise
-                    if episode.episode.playingStatus == .inProgress,
-                       let remaining = episode.episode.remainingTimeFormatted {
-                        Text(remaining)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.5))
-                    } else if episode.episode.playingStatus == .completed {
-                        HStack(spacing: 3) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .semibold))
-                            Text("Finished")
+                    if variant == .history {
+                        // History variant: Show status/time + last played date
+                        if episode.episode.playingStatus == .completed {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text("Finished")
+                                    .font(.system(size: 12))
+                            }
+                            .foregroundStyle(Color(red: 0.6, green: 0.85, blue: 0.6))
+                            
+                            if let lastPlayed = episode.episode.lastPlayedAt {
+                                Text("•")
+                                    .foregroundStyle(.white.opacity(0.5))
+                                
+                                Text(lastPlayed, format: .relative(presentation: .named))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.white.opacity(0.5))
+                                    .lineLimit(1)
+                            }
+                        } else if let remainingFormatted = episode.episode.remainingTimeFormatted {
+                            Text(remainingFormatted)
                                 .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                            
+                            if let lastPlayed = episode.episode.lastPlayedAt {
+                                Text("•")
+                                    .foregroundStyle(.white.opacity(0.5))
+                                
+                                Text(lastPlayed, format: .relative(presentation: .named))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.white.opacity(0.5))
+                                    .lineLimit(1)
+                            }
+                        } else if let lastPlayed = episode.episode.lastPlayedAt {
+                            Text(lastPlayed, format: .relative(presentation: .named))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .lineLimit(1)
                         }
-                        .foregroundStyle(Color(red: 0.6, green: 0.85, blue: 0.6))
-                    } else if let duration = episode.episode.duration {
-                        Text(formatDuration(duration))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.5))
-                    }
-                    
-                    if let date = episode.episode.publishedDate {
-                        Text("•")
-                            .foregroundStyle(.white.opacity(0.5))
+                    } else {
+                        // Standard variant: Show status/time + publish date
+                        if episode.episode.playingStatus == .inProgress,
+                           let remaining = episode.episode.remainingTimeFormatted {
+                            Text(remaining)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                        } else if episode.episode.playingStatus == .completed {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text("Finished")
+                                    .font(.system(size: 12))
+                            }
+                            .foregroundStyle(Color(red: 0.6, green: 0.85, blue: 0.6))
+                        } else if let duration = episode.episode.duration {
+                            Text(formatDuration(duration))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
                         
-                        Text(date, format: .relative(presentation: .named))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.5))
-                            .lineLimit(1)
+                        if let date = episode.episode.publishedDate {
+                            Text("•")
+                                .foregroundStyle(.white.opacity(0.5))
+                            
+                            Text(date, format: .relative(presentation: .named))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .lineLimit(1)
+                        }
                     }
                 }
                 
@@ -130,7 +179,7 @@ struct EpisodeListRow: View {
         case .inProgress:
             return "play.circle"
         case .completed:
-            return "checkmark.circle"
+            return variant == .history ? "arrow.clockwise.circle" : "checkmark.circle"
         case .notPlayed:
             return "play.circle.fill"
         }
