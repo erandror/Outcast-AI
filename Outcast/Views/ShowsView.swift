@@ -202,19 +202,20 @@ private struct PodcastGridCell: View {
     var body: some View {
         VStack(spacing: 8) {
             // Artwork with Up Next badge overlay
-            Button(action: onTap) {
-                ZStack(alignment: .bottomTrailing) {
-                    // Artwork
-                    PodcastArtwork(podcast: podcast, size: .medium)
-                    
-                    // Up Next badge overlay
-                    upNextBadge
-                        .padding(8)
-                }
+            ZStack(alignment: .bottomTrailing) {
+                // Artwork - tappable for navigation
+                PodcastArtwork(podcast: podcast, size: .medium)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onTap()
+                    }
+                
+                // Up Next badge overlay - independent button
+                upNextBadge
+                    .padding(8)
             }
-            .buttonStyle(.plain)
             
-            // Podcast title
+            // Podcast title - also tappable for navigation
             Text(podcast.title)
                 .font(.subheadline)
                 .fontWeight(.medium)
@@ -222,6 +223,10 @@ private struct PodcastGridCell: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(height: 40)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onTap()
+                }
         }
         .frame(maxWidth: .infinity)
     }

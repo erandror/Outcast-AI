@@ -88,6 +88,9 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(item: $selectedPodcast) { podcast in
+                ShowView(podcast: podcast)
+            }
         }
         .sheet(isPresented: $showDownloads) {
             NavigationStack {
@@ -155,9 +158,6 @@ struct ContentView: View {
                         await loadEpisodes()
                     }
                 }
-        }
-        .navigationDestination(item: $selectedPodcast) { podcast in
-            ShowView(podcast: podcast)
         }
     }
     
