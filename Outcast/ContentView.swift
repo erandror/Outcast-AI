@@ -427,12 +427,12 @@ struct ContentView: View {
     private var bottomNavBar: some View {
         HStack(spacing: 24) {
             navButton(
-                icon: "bolt.fill",
+                icon: "play.circle",
                 tab: .start
             )
             
             navButton(
-                icon: "play.circle",
+                icon: "headphones",
                 tab: .listen
             )
             
@@ -457,7 +457,12 @@ struct ContentView: View {
     
     private func navButton(icon: String, tab: MainTab) -> some View {
         Button {
-            selectedTab = tab
+            // If already on Listen tab and tapping again, navigate to Up Next filter
+            if selectedTab == .listen && tab == .listen {
+                selectedFilter = .standard(.upNext)
+            } else {
+                selectedTab = tab
+            }
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 22, weight: .semibold))
