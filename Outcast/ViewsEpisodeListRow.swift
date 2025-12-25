@@ -45,9 +45,13 @@ struct EpisodeListRow: View {
                             .font(.system(size: 12))
                             .foregroundStyle(.white.opacity(0.5))
                     } else if episode.episode.playingStatus == .completed {
-                        Text("Finished")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.5))
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Finished")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundStyle(Color(red: 0.6, green: 0.85, blue: 0.6))
                     } else if let duration = episode.episode.duration {
                         Text(formatDuration(duration))
                             .font(.system(size: 12))

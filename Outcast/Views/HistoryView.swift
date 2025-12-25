@@ -173,9 +173,13 @@ struct HistoryEpisodeRow: View {
                 HStack(spacing: 4) {
                     // Show remaining time or finished status
                     if episode.episode.playingStatus == .completed {
-                        Text("Finished")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.5))
+                        HStack(spacing: 3) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text("Finished")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundStyle(Color(red: 0.6, green: 0.85, blue: 0.6))
                         
                         if let lastPlayed = episode.episode.lastPlayedAt {
                             Text("•")
