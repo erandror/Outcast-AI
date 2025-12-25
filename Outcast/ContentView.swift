@@ -51,6 +51,9 @@ struct ContentView: View {
     @State private var isLoadingMore: Bool = false
     @State private var hasMoreEpisodes: Bool = true
     
+    // Per-filter episode cache - each filter has its own episodes array
+    @State private var episodeCache: [String: [EpisodeWithPodcast]] = [:]
+    
     private let pageSize: Int = 50
 
     var body: some View {
@@ -103,14 +106,25 @@ struct ContentView: View {
         .task {
             await loadTopicFilters()
             await loadEpisodes()
+            // Preload all standard filters in background for instant swiping
+            await preloadAllFilters()
             // Restore last playback session (shows mini-player if episode was playing)
             await playbackManager.restoreLastSession()
             // Start monitoring import progress
             await monitorImportProgress()
         }
         .onChange(of: selectedFilter) {
-            Task {
-                await loadEpisodes()
+            // If data is already cached, just update the episodes state from cache
+            // This makes filter switching instant
+            if let cached = episodeCache[selectedFilter.id] {
+                episodes = cached
+                currentOffset = cached.count
+                hasMoreEpisodes = cached.count >= pageSize
+            } else {
+                // Otherwise, fetch from database
+                Task {
+                    await loadEpisodes()
+                }
             }
         }
         .onChange(of: selectedTab) {
@@ -255,6 +269,8 @@ struct ContentView: View {
     
     @ViewBuilder
     private func filterContentView(for filter: ListenFilter) -> some View {
+        // Use cached episodes for THIS specific filter, not the shared episodes array
+        let filterEpisodes = episodeCache[filter.id] ?? []
         ScrollView {
             GeometryReader { geometry in
                 Color.clear
@@ -263,21 +279,21 @@ struct ContentView: View {
             .frame(height: 0)
             
             VStack(spacing: 0) {
-                if episodes.isEmpty && !isRefreshing {
+                if filterEpisodes.isEmpty && !isRefreshing {
                     emptyStateView
                         .padding(.top, 60)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 } else {
                     LazyVStack(spacing: 0) {
-                        ForEach(episodes) { episode in
+                        ForEach(filterEpisodes) { episode in
                             EpisodeListRow(
                                 episode: episode,
                                 onPlay: {
-                                    // Set playback context with current filter and episodes
-                                    if let index = episodes.firstIndex(where: { $0.id == episode.id }) {
+                                    // Set playback context with current filter and its episodes
+                                    if let index = filterEpisodes.firstIndex(where: { $0.id == episode.id }) {
                                         playerContext = PlaybackContext(
-                                            filter: selectedFilter,
-                                            episodes: episodes,
+                                            filter: filter,
+                                            episodes: filterEpisodes,
                                             currentIndex: index
                                         )
                                     }
@@ -305,7 +321,7 @@ struct ContentView: View {
                         }
                         
                         // Pagination trigger - load more when this appears
-                        if hasMoreEpisodes {
+                        if filter.id == selectedFilter.id && hasMoreEpisodes && !filterEpisodes.isEmpty {
                             HStack {
                                 Spacer()
                                 ProgressView()
@@ -326,6 +342,12 @@ struct ContentView: View {
         .coordinateSpace(name: "scroll")
         .refreshable {
             await refreshFeeds()
+        }
+        .task {
+            // Preload episodes for this filter if not already cached
+            if episodeCache[filter.id] == nil {
+                await loadEpisodesForFilter(filter)
+            }
         }
     }
     
@@ -482,6 +504,8 @@ struct ContentView: View {
                 try updatedPodcast.update(db)
             }
             
+            // Clear cache for Up Next filter since it depends on this setting
+            episodeCache.removeValue(forKey: ListenFilter.standard(.upNext).id)
             // Reload episodes to reflect the change
             await loadEpisodes()
         } catch {
@@ -495,6 +519,8 @@ struct ContentView: View {
                 var ep = episode.episode
                 try ep.toggleSaved(db: db)
             }
+            // Clear cache for Saved filter since it depends on this setting
+            episodeCache.removeValue(forKey: ListenFilter.standard(.saved).id)
             await loadEpisodes()
         } catch {
             print("Failed to toggle saved: \(error)")
@@ -521,6 +547,48 @@ struct ContentView: View {
         }
     }
     
+    /// Load episodes for a specific filter into the cache (used for preloading)
+    private func loadEpisodesForFilter(_ filter: ListenFilter) async {
+        do {
+            let loaded = try await AppDatabase.shared.readAsync { db in
+                try EpisodeWithPodcast.fetchFiltered(filter: filter, limit: pageSize, offset: 0, db: db)
+            }
+            
+            await MainActor.run {
+                episodeCache[filter.id] = loaded
+            }
+        } catch {
+            print("Failed to load episodes for filter \(filter.label): \(error)")
+        }
+    }
+    
+    /// Preload all standard filters in parallel for instant swiping
+    private func preloadAllFilters() async {
+        // Use a task group to load all filters in parallel
+        await withTaskGroup(of: Void.self) { group in
+            // Preload all standard filters
+            for forYouFilter in ForYouFilter.allCases {
+                let filter = ListenFilter.standard(forYouFilter)
+                // Skip if already cached
+                if episodeCache[filter.id] == nil {
+                    group.addTask {
+                        await self.loadEpisodesForFilter(filter)
+                    }
+                }
+            }
+            
+            // Preload topic filters
+            for topic in topicFilters {
+                let filter = ListenFilter.topic(topic)
+                if episodeCache[filter.id] == nil {
+                    group.addTask {
+                        await self.loadEpisodesForFilter(filter)
+                    }
+                }
+            }
+        }
+    }
+    
     private func loadEpisodes() async {
         do {
             // Reset pagination state
@@ -533,7 +601,9 @@ struct ContentView: View {
             }
             
             await MainActor.run {
+                // Update both the legacy episodes array and the cache
                 episodes = loaded
+                episodeCache[filter.id] = loaded
                 currentOffset = loaded.count
                 // If we got fewer episodes than requested, we've reached the end
                 hasMoreEpisodes = loaded.count >= pageSize
@@ -560,6 +630,11 @@ struct ContentView: View {
             
             await MainActor.run {
                 episodes.append(contentsOf: loaded)
+                // Also update the cache
+                if var cached = episodeCache[filter.id] {
+                    cached.append(contentsOf: loaded)
+                    episodeCache[filter.id] = cached
+                }
                 currentOffset += loaded.count
                 // If we got fewer episodes than requested, we've reached the end
                 hasMoreEpisodes = loaded.count >= pageSize
@@ -576,6 +651,8 @@ struct ContentView: View {
         do {
             let refresher = FeedRefresher.shared
             _ = try await refresher.refreshAll()
+            // Clear the entire cache since new episodes may have arrived
+            episodeCache.removeAll()
             await loadEpisodes()
             lastRefreshDate = Date()
         } catch {

@@ -10,30 +10,6 @@ import MediaPlayer
 import Combine
 import Foundation
 
-// #region agent log
-private func debugLog(location: String, message: String, data: [String: Any], hypothesisId: String) {
-    let logPath = "/Users/erandrorsmacbookpro/Outcast-AI/Outcast/.cursor/debug.log"
-    let logEntry: [String: Any] = [
-        "timestamp": Date().timeIntervalSince1970 * 1000,
-        "location": location,
-        "message": message,
-        "data": data,
-        "sessionId": "debug-session",
-        "hypothesisId": hypothesisId
-    ]
-    if let jsonData = try? JSONSerialization.data(withJSONObject: logEntry),
-       let jsonString = String(data: jsonData, encoding: .utf8) {
-        if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-            fileHandle.seekToEndOfFile()
-            fileHandle.write((jsonString + "\n").data(using: .utf8)!)
-            fileHandle.closeFile()
-        } else {
-            try? (jsonString + "\n").write(toFile: logPath, atomically: true, encoding: .utf8)
-        }
-    }
-}
-// #endregion
-
 /// Wraps AVPlayer for audio playback with session management
 @MainActor
 class AudioPlayer: ObservableObject {
@@ -83,24 +59,9 @@ class AudioPlayer: ObservableObject {
     private func setupAudioSession() {
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            // #region agent log
-            debugLog(location: "AudioPlayer.swift:49", message: "Setting audio session category", data: [:], hypothesisId: "C")
-            // #endregion
-            
             try audioSession.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
             try audioSession.setActive(true)
-            
-            // #region agent log
-            debugLog(location: "AudioPlayer.swift:56", message: "Audio session configured", data: [
-                "category": audioSession.category.rawValue,
-                "mode": audioSession.mode.rawValue,
-                "isActive": true
-            ], hypothesisId: "C")
-            // #endregion
         } catch {
-            // #region agent log
-            debugLog(location: "AudioPlayer.swift:64", message: "Audio session setup failed", data: ["error": error.localizedDescription], hypothesisId: "C")
-            // #endregion
             print("Failed to set up audio session: \(error)")
         }
     }
@@ -145,45 +106,19 @@ class AudioPlayer: ObservableObject {
     /// Start or resume playback
     func play() {
         guard let player = player else {
-            // #region agent log
-            debugLog(location: "AudioPlayer.swift:115", message: "play() called but player is nil", data: [:], hypothesisId: "H")
-            // #endregion
             return
         }
         
-        // #region agent log
-        let audioSession = AVAudioSession.sharedInstance()
-        debugLog(location: "AudioPlayer.swift:118", message: "play() called - checking session", data: [
-            "isOtherAudioPlaying": audioSession.isOtherAudioPlaying,
-            "category": audioSession.category.rawValue,
-            "mode": audioSession.mode.rawValue,
-            "playerRate": player.rate,
-            "playerTimeControlStatus": player.timeControlStatus.rawValue
-        ], hypothesisId: "H")
-        // #endregion
-        
         // Ensure audio session is active before playing
+        let audioSession = AVAudioSession.sharedInstance()
         do {
             try audioSession.setActive(true)
-            // #region agent log
-            debugLog(location: "AudioPlayer.swift:132", message: "Audio session reactivated successfully", data: [:], hypothesisId: "F")
-            // #endregion
         } catch {
-            // #region agent log
-            debugLog(location: "AudioPlayer.swift:137", message: "Failed to reactivate audio session", data: ["error": error.localizedDescription], hypothesisId: "H")
-            // #endregion
+            // Session activation failed, but continue anyway
         }
         
         player.rate = playbackRate
         isPlaying = true
-        
-        // #region agent log
-        debugLog(location: "AudioPlayer.swift:147", message: "play() completed", data: [
-            "newRate": player.rate,
-            "isPlaying": isPlaying,
-            "timeControlStatus": player.timeControlStatus.rawValue
-        ], hypothesisId: "H")
-        // #endregion
     }
     
     /// Pause playback
