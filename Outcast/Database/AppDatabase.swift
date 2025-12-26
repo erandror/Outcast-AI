@@ -274,7 +274,143 @@ final class AppDatabase: Sendable {
             try db.create(index: "episode_isDownvoted", on: "episode", columns: ["isDownvoted"])
         }
         
+        // Migration v12: Add parent categories and categories for podcast discovery
+        migrator.registerMigration("v12_categories") { db in
+            // Create parent_category table
+            try db.create(table: "parent_category") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("label", .text).notNull().unique()
+                t.column("emoji", .text).notNull()
+                t.column("genreId", .integer)
+            }
+            
+            // Create category table
+            try db.create(table: "category") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("label", .text).notNull().unique()
+                t.column("emoji", .text).notNull()
+                t.column("genreId", .integer)
+                t.column("subgenreId", .integer)
+            }
+            
+            // Create parent_category_subcategory junction table
+            try db.create(table: "parent_category_subcategory") { t in
+                t.column("parentCategoryId", .integer).notNull()
+                    .references("parent_category", onDelete: .cascade)
+                t.column("categoryId", .integer).notNull()
+                    .references("category", onDelete: .cascade)
+                t.primaryKey(["parentCategoryId", "categoryId"])
+            }
+            
+            // Create indexes for efficient lookups
+            try db.create(index: "parent_category_genreId", on: "parent_category", columns: ["genreId"])
+            try db.create(index: "category_genreId", on: "category", columns: ["genreId"])
+            try db.create(index: "category_subgenreId", on: "category", columns: ["subgenreId"])
+            try db.create(index: "parent_category_subcategory_categoryId", 
+                         on: "parent_category_subcategory", 
+                         columns: ["categoryId"])
+            
+            // Seed data from bundled recommendations.sqlite
+            try AppDatabase.seedCategoriesFromRecommendationsDB(db: db)
+        }
+        
+        // Migration v13: Add user profile for onboarding
+        migrator.registerMigration("v13_user_profile") { db in
+            try db.create(table: "user_profile") { t in
+                t.autoIncrementedPrimaryKey("id")
+                t.column("fullName", .text)
+                t.column("phoneNumber", .text)
+                t.column("countryCode", .text)
+                t.column("selectedParentCategoryIds", .text) // JSON array
+                t.column("selectedCategoryIds", .text)       // JSON array
+                t.column("goalAnswers", .text)               // JSON object
+                t.column("onboardingCompleted", .boolean).notNull().defaults(to: false)
+                t.column("createdAt", .datetime).notNull()
+                t.column("updatedAt", .datetime).notNull()
+            }
+        }
+        
         return migrator
+    }
+    
+    /// Seed parent categories and categories from the bundled recommendations.sqlite
+    nonisolated private static func seedCategoriesFromRecommendationsDB(db: Database) throws {
+        // Get the path to the bundled recommendations.sqlite
+        // Try with subdirectory first, then without (Xcode may flatten the structure)
+        let bundleURL: URL? = Bundle.main.url(forResource: "recommendations", withExtension: "sqlite", subdirectory: "Data")
+            ?? Bundle.main.url(forResource: "recommendations", withExtension: "sqlite")
+        
+        guard let bundleURL else {
+            print("[MIGRATION] ⚠️ Could not find bundled recommendations.sqlite, skipping category seeding")
+            return
+        }
+        
+        // Open a connection to the recommendations database
+        let recsQueue = try DatabaseQueue(path: bundleURL.path)
+        
+        // Read and insert parent categories
+        let parentCategories = try recsQueue.read { recsDb in
+            try Row.fetchAll(recsDb, sql: """
+                SELECT id, label, emoji, genre_id as genreId
+                FROM parent_categories
+                ORDER BY id
+                """)
+        }
+        
+        for row in parentCategories {
+            try db.execute(sql: """
+                INSERT INTO parent_category (id, label, emoji, genreId)
+                VALUES (?, ?, ?, ?)
+                """, arguments: [
+                    row["id"] as Int64,
+                    row["label"] as String,
+                    row["emoji"] as String,
+                    row["genreId"] as Int?
+                ])
+        }
+        
+        // Read and insert categories
+        let categories = try recsQueue.read { recsDb in
+            try Row.fetchAll(recsDb, sql: """
+                SELECT id, label, emoji, genre_id as genreId, subgenre_id as subgenreId
+                FROM categories
+                ORDER BY id
+                """)
+        }
+        
+        for row in categories {
+            try db.execute(sql: """
+                INSERT INTO category (id, label, emoji, genreId, subgenreId)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [
+                    row["id"] as Int64,
+                    row["label"] as String,
+                    row["emoji"] as String,
+                    row["genreId"] as Int?,
+                    row["subgenreId"] as Int?
+                ])
+        }
+        
+        // Read and insert parent-category relationships
+        let relationships = try recsQueue.read { recsDb in
+            try Row.fetchAll(recsDb, sql: """
+                SELECT parent_category_id as parentCategoryId, subcategory_id as categoryId
+                FROM parent_category_subcategories
+                ORDER BY id
+                """)
+        }
+        
+        for row in relationships {
+            try db.execute(sql: """
+                INSERT INTO parent_category_subcategory (parentCategoryId, categoryId)
+                VALUES (?, ?)
+                """, arguments: [
+                    row["parentCategoryId"] as Int64,
+                    row["categoryId"] as Int64
+                ])
+        }
+        
+        print("[MIGRATION] ✅ Seeded \(parentCategories.count) parent categories, \(categories.count) categories, and \(relationships.count) relationships")
     }
 }
 

@@ -61,14 +61,10 @@ extension CategoryRecord {
     
     /// Fetch categories for a specific parent category
     nonisolated static func fetchByParent(_ parentId: Int64, db: Database) throws -> [CategoryRecord] {
-        let sql = """
-            SELECT c.*
-            FROM category c
-            INNER JOIN parent_category_subcategory pcs ON c.id = pcs.categoryId
-            WHERE pcs.parentCategoryId = ?
-            ORDER BY c.label COLLATE NOCASE
-            """
-        return try CategoryRecord.fetchAll(db, sql: sql, arguments: [parentId])
+        try CategoryRecord
+            .joining(required: CategoryRecord.parentCategories.filter(Column("parentCategoryId") == parentId))
+            .order(Column("label").collating(.localizedCaseInsensitiveCompare))
+            .fetchAll(db)
     }
     
     /// Fetch a category by its subgenre ID

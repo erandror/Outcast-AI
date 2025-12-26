@@ -11,6 +11,8 @@ import BackgroundTasks
 @main
 struct OutcastApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var isOnboardingComplete: Bool = false
+    @State private var isCheckingOnboarding: Bool = true
     
     init() {
         // Initialize database on launch
@@ -28,11 +30,48 @@ struct OutcastApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .preferredColorScheme(.dark)
+            Group {
+                if isCheckingOnboarding {
+                    // Show loading state while checking onboarding status
+                    ZStack {
+                        Color.black.ignoresSafeArea()
+                        ProgressView()
+                            .tint(.white)
+                    }
+                } else if isOnboardingComplete {
+                    ContentView()
+                } else {
+                    OnboardingCoordinator(onComplete: {
+                        isOnboardingComplete = true
+                    })
+                }
+            }
+            .preferredColorScheme(.dark)
+            .task {
+                await checkOnboardingStatus()
+            }
         }
         .onChange(of: scenePhase) { oldPhase, newPhase in
             handleScenePhaseChange(newPhase)
+        }
+    }
+    
+    private func checkOnboardingStatus() async {
+        do {
+            let isComplete = try await AppDatabase.shared.readAsync { db in
+                try ProfileRecord.isOnboardingComplete(db: db)
+            }
+            await MainActor.run {
+                isOnboardingComplete = isComplete
+                isCheckingOnboarding = false
+            }
+        } catch {
+            print("Failed to check onboarding status: \(error)")
+            // Default to showing onboarding on error
+            await MainActor.run {
+                isOnboardingComplete = false
+                isCheckingOnboarding = false
+            }
         }
     }
     
