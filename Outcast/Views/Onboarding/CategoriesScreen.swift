@@ -119,7 +119,7 @@ private struct CategoryGroup: View {
             HStack(spacing: 8) {
                 Text(parent.emoji)
                     .font(.title2)
-                Text(parent.label)
+                Text(parent.label.capitalized)
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundStyle(.white)
@@ -162,7 +162,7 @@ private struct CategoryBadge: View {
             HStack(spacing: 6) {
                 Text(emoji)
                     .font(.body)
-                Text(label)
+                Text(label.capitalized)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.white)

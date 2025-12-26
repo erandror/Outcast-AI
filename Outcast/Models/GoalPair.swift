@@ -16,6 +16,50 @@ struct GoalPair: Identifiable, Sendable {
     let rightValue: String // Which value appears on the right
     let isSwapped: Bool    // Whether the original pair order was swapped
     
+    /// Emoji mappings for each value
+    static let valueEmojis: [String: String] = [
+        "Truth": "💎",
+        "Relationships": "🤝",
+        "Certainty": "✅",
+        "Complexity": "🧩",
+        "Creativity": "🎨",
+        "Order": "📐",
+        "Curiosity": "🔭",
+        "Familiarity": "🏠",
+        "Adventure": "🚀",
+        "Predictability": "☕️",
+        "Learning": "📚",
+        "Entertainment": "🎬",
+        "Safety": "🛡️",
+        "Challenge": "💪",
+        "Excitement": "🎉",
+        "Calmness": "🧘🏻‍♂️",
+        "Energy": "⚡️",
+        "Relaxation": "🌴",
+        "Freedom": "🦅",
+        "Structure": "🍱",
+        "Tradition": "🏛️",
+        "Invention": "💡",
+        "Enjoyment": "😊",
+        "Productivity": "📈",
+        "Success": "🏆",
+        "Community": "👬",
+        "Belonging": "🤗",
+        "Self-Expression": "🎤",
+        "Growth": "🌱",
+        "Comfort": "📺"
+    ]
+    
+    /// Emoji for the left value
+    var leftEmoji: String {
+        Self.valueEmojis[leftValue] ?? ""
+    }
+    
+    /// Emoji for the right value
+    var rightEmoji: String {
+        Self.valueEmojis[rightValue] ?? ""
+    }
+    
     /// All 15 goal pairs as defined in the spec
     static let allPairs: [(String, String)] = [
         ("Truth", "Relationships"),

@@ -123,7 +123,7 @@ private struct ParentCategoryCard: View {
                 Text(emoji)
                     .font(.system(size: 40))
                 
-                Text(label)
+                Text(label.capitalized)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)

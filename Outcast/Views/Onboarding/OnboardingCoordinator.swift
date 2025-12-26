@@ -19,6 +19,8 @@ struct OnboardingCoordinator: View {
     @State private var goalPairs: [GoalPair] = []
     @State private var goalAnswers: [String: Double] = [:]
     @State private var currentGoalIndex: Int = 0
+    @State private var showCelebration: Bool = false
+    @State private var celebrationEmoji: String = ""
     
     enum OnboardingStep: Equatable {
         case welcome
@@ -95,14 +97,48 @@ struct OnboardingCoordinator: View {
                                 set: { goalAnswers[pair.storageKey] = $0 }
                             ),
                             onContinue: {
-                                if index < goalPairs.count - 1 {
-                                    // Move to next question
-                                    currentGoalIndex = index + 1
-                                    currentStep = .goalSlider(index: index + 1)
+                                // Determine which emoji to celebrate with based on slider position
+                                let sliderPosition = Int((goalAnswers[pair.storageKey] ?? 3.0).rounded())
+                                if sliderPosition < 3 {
+                                    celebrationEmoji = pair.leftEmoji
+                                } else if sliderPosition > 3 {
+                                    celebrationEmoji = pair.rightEmoji
                                 } else {
-                                    // All questions answered, save profile
-                                    Task {
-                                        await saveProfile()
+                                    // Neutral - randomly pick one
+                                    celebrationEmoji = Bool.random() ? pair.leftEmoji : pair.rightEmoji
+                                }
+                                
+                                // Show celebration
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                    showCelebration = true
+                                }
+                                
+                                // After delay, hide celebration and move to next screen
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 800_000_000) // 0.8 seconds
+                                    
+                                    await MainActor.run {
+                                        withAnimation(.easeOut(duration: 0.2)) {
+                                            showCelebration = false
+                                        }
+                                        
+                                        // Small delay before transition
+                                        Task {
+                                            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                                            
+                                            await MainActor.run {
+                                                if index < goalPairs.count - 1 {
+                                                    // Move to next question
+                                                    currentGoalIndex = index + 1
+                                                    currentStep = .goalSlider(index: index + 1)
+                                                } else {
+                                                    // All questions answered, save profile
+                                                    Task {
+                                                        await saveProfile()
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -118,6 +154,9 @@ struct OnboardingCoordinator: View {
                 }
             }
             .navigationBarBackButtonHidden(true)
+            .overlay {
+                GoalCelebrationOverlay(emoji: celebrationEmoji, isPresented: showCelebration)
+            }
             .toolbar {
                 // Show back button for all steps except welcome
                 if currentStep != .welcome {

@@ -28,44 +28,55 @@ struct GoalSliderScreen: View {
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Progress indicator
-                HStack(spacing: 4) {
-                    ForEach(0..<totalCount, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(index <= currentIndex ? Color.white : Color.white.opacity(0.3))
-                            .frame(height: 3)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 60)
+                // Step counter
+                Text("\(currentIndex + 1) of \(totalCount)")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.top, 60)
                 
                 Spacer()
                     .frame(height: 60)
                 
                 // Title
-                Text("Which is more important to you?")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 80)
+                VStack(spacing: 8) {
+                    Text("Which is more important to you")
+                        .font(.title3)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white.opacity(0.7))
+                    
+                    Text("\(goalPair.leftValue) or \(goalPair.rightValue)?")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.white)
+                }
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.bottom, 80)
                 
                 // Value Labels
                 HStack {
-                    Text(goalPair.leftValue)
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(discreteValue < 3 ? .white : .white.opacity(0.5))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 6) {
+                        Text(goalPair.leftEmoji)
+                            .font(.title3)
+                        Text(goalPair.leftValue)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(discreteValue < 3 ? .white : .white.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     
                     Spacer()
                     
-                    Text(goalPair.rightValue)
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(discreteValue > 3 ? .white : .white.opacity(0.5))
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    HStack(spacing: 6) {
+                        Text(goalPair.rightValue)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text(goalPair.rightEmoji)
+                            .font(.title3)
+                    }
+                    .foregroundStyle(discreteValue > 3 ? .white : .white.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 20)
