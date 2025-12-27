@@ -205,9 +205,15 @@ struct OnboardingCoordinator: View {
     
     private func saveProfile() async {
         do {
-            // Convert goal answers from Double to Int
-            let intGoalAnswers = goalAnswers.mapValues { Int($0.rounded()) }
-            
+            // Normalize goal answers before saving
+            // Converts slider position (0-6) to normalized score (-3 to +3)
+            // This accounts for randomized left/right display order
+            var normalizedGoalAnswers: [String: Int] = [:]
+            for pair in goalPairs {
+                let sliderPosition = Int((goalAnswers[pair.storageKey] ?? 3.0).rounded())
+                normalizedGoalAnswers[pair.storageKey] = pair.normalizedScore(sliderPosition: sliderPosition)
+            }
+
             try await AppDatabase.shared.writeAsync { db in
                 try ProfileRecord.saveProfile(
                     fullName: fullName.trimmingCharacters(in: .whitespaces),
@@ -215,7 +221,7 @@ struct OnboardingCoordinator: View {
                     countryCode: countryCode,
                     selectedParentCategoryIds: Array(selectedParentCategoryIds),
                     selectedCategoryIds: Array(selectedCategoryIds),
-                    goalAnswers: intGoalAnswers,
+                    goalAnswers: normalizedGoalAnswers,
                     onboardingCompleted: true,
                     db: db
                 )

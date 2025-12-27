@@ -16,7 +16,7 @@ struct ProfileRecord: Identifiable, Codable, Sendable {
     var countryCode: String?
     var selectedParentCategoryIds: [Int64]
     var selectedCategoryIds: [Int64]
-    var goalAnswers: [String: Int] // goal pair key -> slider value (0-6)
+    var goalAnswers: [String: Int] // goal pair key -> normalized score (-3 to +3, negative=valueA, positive=valueB)
     var onboardingCompleted: Bool
     var createdAt: Date
     var updatedAt: Date
